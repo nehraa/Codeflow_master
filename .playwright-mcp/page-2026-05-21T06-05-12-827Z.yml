@@ -1,0 +1,272 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e6]: CF
+        - generic [ref=e7]: Codeflow IDE
+      - generic [ref=e11]: Agent Ready
+      - generic [ref=e12]:
+        - button "Toggle Terminal" [ref=e13]:
+          - img [ref=e14]
+        - button "Save" [ref=e16]:
+          - img [ref=e17]
+        - button "Settings" [active] [ref=e21]:
+          - img [ref=e22]
+        - button "Help" [ref=e25]:
+          - img [ref=e26]
+    - generic [ref=e29]:
+      - generic [ref=e30]:
+        - generic [ref=e31]:
+          - button [ref=e32]:
+            - img [ref=e33]
+          - button [ref=e36]:
+            - img [ref=e37]
+          - button [ref=e41]:
+            - img [ref=e42]
+          - button [ref=e46]:
+            - img [ref=e47]
+        - generic [ref=e51]:
+          - generic [ref=e52]:
+            - button "src" [ref=e53] [cursor=pointer]:
+              - img [ref=e54]
+              - img [ref=e56]
+              - generic [ref=e58]: src
+            - generic [ref=e59]:
+              - generic [ref=e60]:
+                - button "components" [ref=e61] [cursor=pointer]:
+                  - img [ref=e62]
+                  - img [ref=e64]
+                  - generic [ref=e66]: components
+                - generic [ref=e67]:
+                  - button "canvas" [ref=e69] [cursor=pointer]:
+                    - img [ref=e70]
+                    - img [ref=e72]
+                    - generic [ref=e74]: canvas
+                  - button "panels" [ref=e76] [cursor=pointer]:
+                    - img [ref=e77]
+                    - img [ref=e79]
+                    - generic [ref=e81]: panels
+                  - button "ui" [ref=e83] [cursor=pointer]:
+                    - img [ref=e84]
+                    - img [ref=e86]
+                    - generic [ref=e88]: ui
+                  - button "Header.tsx" [ref=e90]:
+                    - img [ref=e91]
+                    - generic [ref=e94]: Header.tsx
+              - button "lib" [ref=e96] [cursor=pointer]:
+                - img [ref=e97]
+                - img [ref=e99]
+                - generic [ref=e101]: lib
+              - button "app" [ref=e103] [cursor=pointer]:
+                - img [ref=e104]
+                - img [ref=e106]
+                - generic [ref=e108]: app
+          - button "package.json" [ref=e110]:
+            - img [ref=e111]
+            - generic [ref=e114]: package.json
+          - button "tsconfig.json" [ref=e116]:
+            - img [ref=e117]
+            - generic [ref=e120]: tsconfig.json
+      - generic [ref=e121]:
+        - generic [ref=e123]:
+          - button "Rewind" [ref=e124] [cursor=pointer]:
+            - img [ref=e125]
+          - button "Play" [ref=e127] [cursor=pointer]:
+            - img [ref=e128]
+          - button "Pause" [ref=e130] [cursor=pointer]:
+            - img [ref=e131]
+          - button "Stop" [ref=e134] [cursor=pointer]:
+            - img [ref=e135]
+          - button "Record" [ref=e137] [cursor=pointer]:
+            - img [ref=e138]
+          - button "Fast Forward" [ref=e140] [cursor=pointer]:
+            - img [ref=e141]
+          - generic [ref=e144]: stopped
+        - application [ref=e147]:
+          - generic [ref=e149]:
+            - generic:
+              - generic:
+                - img:
+                  - group "Edge from 1 to 2" [ref=e300] [cursor=pointer]
+                - img:
+                  - group "Edge from 2 to 3" [ref=e303] [cursor=pointer]
+                - img:
+                  - group "Edge from 3 to 4" [ref=e306] [cursor=pointer]
+                - img:
+                  - group "Edge from 2 to 5" [ref=e309] [cursor=pointer]
+              - generic:
+                - group [ref=e312]:
+                  - generic [ref=e313]:
+                    - generic [ref=e315]:
+                      - img [ref=e317]
+                      - generic [ref=e322]:
+                        - generic [ref=e323]: Blueprint Generator
+                        - generic [ref=e324]: Generate code blueprints
+                    - generic [ref=e325]:
+                      - img [ref=e326]
+                      - generic [ref=e330]: Blueprint v1.0
+                - group [ref=e332]:
+                  - generic [ref=e333]:
+                    - generic [ref=e335]:
+                      - img [ref=e337]
+                      - generic [ref=e342]:
+                        - generic [ref=e343]: Agent Orchestrator
+                        - generic [ref=e344]: Orchestrate subagents
+                    - generic [ref=e345]:
+                      - generic [ref=e346]:
+                        - img [ref=e347]
+                        - generic [ref=e349]: "3"
+                      - generic [ref=e350]:
+                        - img [ref=e351]
+                        - generic [ref=e354]: ready
+                - group [ref=e356]:
+                  - generic [ref=e357]:
+                    - generic [ref=e359]:
+                      - img [ref=e361]
+                      - generic [ref=e363]:
+                        - generic [ref=e364]: Ghost Node
+                        - generic [ref=e365]: Evolution candidate
+                    - generic [ref=e366]:
+                      - generic [ref=e367]:
+                        - img [ref=e368]
+                        - generic [ref=e371]: 85%
+                      - generic [ref=e372]:
+                        - img [ref=e373]
+                        - generic [ref=e385]: "gen: 42"
+                - group [ref=e388]:
+                  - generic [ref=e389]:
+                    - generic [ref=e391]:
+                      - img [ref=e393]
+                      - generic [ref=e397]:
+                        - generic [ref=e398]: Digital Twin
+                        - generic [ref=e399]: Simulation state
+                    - generic [ref=e401]:
+                      - img [ref=e402]
+                      - generic [ref=e404]: synced
+                - group [ref=e406]:
+                  - generic [ref=e407]:
+                    - generic [ref=e409]:
+                      - img [ref=e411]
+                      - generic [ref=e413]:
+                        - generic [ref=e414]: Execution Engine
+                        - generic [ref=e415]: Run generated code
+                    - generic [ref=e416]: console.log("Hello")
+                    - generic [ref=e417]:
+                      - img [ref=e418]
+                      - generic [ref=e420]: idle
+          - generic "Control Panel" [ref=e150]:
+            - button "Zoom In" [ref=e151] [cursor=pointer]:
+              - img [ref=e152]
+            - button "Zoom Out" [ref=e154] [cursor=pointer]:
+              - img [ref=e155]
+            - button "Fit View" [ref=e157] [cursor=pointer]:
+              - img [ref=e158]
+            - button "Toggle Interactivity" [ref=e160] [cursor=pointer]:
+              - img [ref=e161]
+          - img "Mini Map" [ref=e164]
+          - img
+          - generic [ref=e166]: "Mode: STOPPED"
+          - link "React Flow attribution" [ref=e168] [cursor=pointer]:
+            - /url: https://reactflow.dev
+            - text: React Flow
+        - generic [ref=e441]:
+          - generic [ref=e442]:
+            - generic [ref=e443]:
+              - img [ref=e444]
+              - generic [ref=e446]: Terminal
+              - generic [ref=e447]: zsh
+            - generic [ref=e448]:
+              - button [ref=e449]:
+                - img [ref=e450]
+              - button [ref=e452]:
+                - img [ref=e453]
+          - generic [ref=e456]:
+            - generic [ref=e457]: Codeflow IDE initialized
+            - generic [ref=e458]: Loading @abhinav2203/codeflow-core...
+            - generic [ref=e459]: All packages loaded successfully
+            - generic [ref=e463]: Agent activity log entry 88
+          - generic [ref=e460]:
+            - generic [ref=e461]: $
+            - textbox "Type a command..." [ref=e462]
+      - generic [ref=e192]:
+        - heading "Tools" [level=2] [ref=e194]
+        - generic [ref=e195]:
+          - generic [ref=e196]:
+            - button "Execution" [ref=e197]:
+              - generic [ref=e198]:
+                - img [ref=e199]
+                - generic [ref=e201]: Execution
+              - img [ref=e202]
+            - generic [ref=e205]:
+              - generic [ref=e206]:
+                - button "Run" [ref=e207]:
+                  - img [ref=e208]
+                  - text: Run
+                - button "Reset" [ref=e210]:
+                  - img [ref=e211]
+                  - text: Reset
+              - generic [ref=e214]:
+                - generic [ref=e215]:
+                  - generic [ref=e216]: "[10:23:45]"
+                  - generic [ref=e217]: Executing blueprint...
+                - generic [ref=e218]:
+                  - generic [ref=e219]: "[10:23:46]"
+                  - generic [ref=e220]: Agent spawned
+                - generic [ref=e221]:
+                  - generic [ref=e222]: "[10:23:47]"
+                  - generic [ref=e223]: Code generated
+          - generic [ref=e224]:
+            - button "Analysis" [ref=e225]:
+              - generic [ref=e226]:
+                - img [ref=e227]
+                - generic [ref=e229]: Analysis
+              - img [ref=e230]
+            - generic [ref=e234]:
+              - generic [ref=e236]:
+                - generic [ref=e237]: Complexity
+                - generic [ref=e238]: 72%
+              - generic [ref=e241]:
+                - generic [ref=e242]: Coverage
+                - generic [ref=e243]: 85%
+              - generic [ref=e246]:
+                - generic [ref=e247]: Performance
+                - generic [ref=e248]: 64%
+          - generic [ref=e250]:
+            - button "Digital Twin" [ref=e251]:
+              - generic [ref=e252]:
+                - img [ref=e253]
+                - generic [ref=e257]: Digital Twin
+              - img [ref=e258]
+            - generic [ref=e261]:
+              - generic [ref=e262]:
+                - generic [ref=e263]: Sync Status
+                - generic [ref=e264]: Synced
+              - generic [ref=e265]:
+                - button "Sync Now" [ref=e266]
+                - button "Snapshot" [ref=e267]
+          - generic [ref=e268]:
+            - button "Evolution" [ref=e269]:
+              - generic [ref=e270]:
+                - img [ref=e271]
+                - generic [ref=e283]: Evolution
+              - img [ref=e284]
+            - generic [ref=e288]:
+              - generic [ref=e289]:
+                - generic [ref=e290]: Generation
+                - generic [ref=e291]: "42"
+              - generic [ref=e292]:
+                - generic [ref=e293]: Best Fitness
+                - generic [ref=e294]: 85%
+              - generic [ref=e295]:
+                - button "Evolve" [ref=e296]:
+                  - img [ref=e297]
+                  - text: Evolve
+                - button "Reset" [ref=e299]
+  - status [ref=e430]:
+    - generic [ref=e431]:
+      - img [ref=e433]
+      - generic [ref=e435]:
+        - text: Static route
+        - button "Hide static indicator" [ref=e436] [cursor=pointer]:
+          - img [ref=e437]
+  - alert [ref=e440]

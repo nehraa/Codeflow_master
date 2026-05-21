@@ -1,0 +1,5027 @@
+===== FILE: jest.config.ts =====
+import type { Config } from 'jest';
+import nextJest from 'next/jest';
+
+const createJestConfig = nextJest({
+  dir: './',
+});
+
+const config: Config = {
+  coverageProvider: 'v8',
+  testEnvironment: 'jsdom',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^@codeflow/(.*)$': '<rootDir>/src/lib/codeflow/$1',
+  },
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
+  transform: {
+    '^.+\\.(ts|tsx)$': ['ts-jest', { tsconfig: 'tsconfig.json' }],
+  },
+};
+
+export default createJestConfig(config);
+===== FILE: jest.setup.ts =====
+import '@testing-library/jest-dom';
+import { expect, afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
+
+// Cleanup after each test
+afterEach(() => {
+  cleanup();
+});
+
+// Global matchers
+expect.extend({
+  toBeInTheDocument: (received: any) => {
+    if (received && typeof received === 'object' && 'toBeInTheDocument' in received) {
+      return received.toBeInTheDocument();
+    }
+    return {
+      pass: false,
+      message: () => 'Expected element to be in the document',
+    };
+  },
+});
+===== FILE: next-env.d.ts =====
+/// <reference types="next" />
+/// <reference types="next/image-types/global" />
+
+// NOTE: This file should not be edited
+// see https://nextjs.org/docs/app/api-reference/config/typescript for more information.
+
+===== FILE: src/app/layout.tsx =====
+import type { Metadata } from 'next';
+import './globals.css';
+
+export const metadata: Metadata = {
+  title: 'Codeflow IDE',
+  description: 'Unified Codeflow IDE - Canvas-centric development environment with blueprint generation, agent orchestration, and digital twin simulation',
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+===== FILE: src/app/page.tsx =====
+'use client';
+
+import { useState } from 'react';
+import { CodeflowCanvas } from '@/components/canvas/CodeflowCanvas';
+import { VCRControls } from '@/components/canvas/VCRControls';
+import { LeftSidebar } from '@/components/panels/LeftSidebar';
+import { RightPanel } from '@/components/panels/RightPanel';
+import { TerminalPanel } from '@/components/panels/TerminalPanel';
+import { Header } from '@/components/ui/Header';
+import { cn } from '@/lib/utils';
+
+export default function Home() {
+  const [terminalOpen, setTerminalOpen] = useState(true);
+  const [playbackState, setPlaybackState] = useState<'stopped' | 'playing' | 'paused' | 'recording'>('stopped');
+
+  return (
+    <div className="h-screen w-screen flex flex-col bg-[#0a0a0f] text-slate-200 overflow-hidden">
+      {/* Header */}
+      <Header onTerminalToggle={() => setTerminalOpen(!terminalOpen)} terminalOpen={terminalOpen} />
+
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar */}
+        <LeftSidebar className="w-64 flex-shrink-0" />
+
+        {/* Main Canvas */}
+        <div className="flex-1 flex flex-col relative">
+          {/* VCR Controls Bar */}
+          <div className="h-14 flex items-center justify-center border-b border-[#2a2a3a] bg-[#13131a]">
+            <VCRControls
+              state={playbackState}
+              onStateChange={setPlaybackState}
+              onPlay={() => setPlaybackState('playing')}
+              onPause={() => setPlaybackState('paused')}
+              onStop={() => setPlaybackState('stopped')}
+              onRecord={() => setPlaybackState('recording')}
+              onFastForward={() => console.log('FF')}
+              onRewind={() => console.log('REW')}
+            />
+          </div>
+
+          {/* Canvas Area */}
+          <div className="flex-1 relative">
+            <CodeflowCanvas playbackState={playbackState} />
+            {/* Heatmap overlay */}
+            <div className="heatmap-overlay" />
+          </div>
+
+          {/* Terminal Panel */}
+          {terminalOpen && (
+            <TerminalPanel
+              className="h-48 border-t border-[#2a2a3a]"
+              onClose={() => setTerminalOpen(false)}
+            />
+          )}
+        </div>
+
+        {/* Right Panel */}
+        <RightPanel className="w-72 flex-shrink-0" />
+      </div>
+    </div>
+  );
+}
+===== FILE: src/components/agent/AgentOrchestrator.tsx =====
+'use client';
+
+import { useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Bot, Plus, X, GripVertical, ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface SubAgent {
+  id: string;
+  name: string;
+  status: 'idle' | 'running' | 'completed' | 'error';
+  progress: number;
+  message: string;
+}
+
+interface AgentOrchestratorProps {
+  className?: string;
+}
+
+export function AgentOrchestrator({ className }: AgentOrchestratorProps) {
+  const [agents, setAgents] = useState<SubAgent[]>([
+    { id: '1', name: 'Coder Agent', status: 'running', progress: 65, message: 'Writing components...' },
+    { id: '2', name: 'Reviewer Agent', status: 'idle', progress: 0, message: 'Waiting...' },
+    { id: '3', name: 'Tester Agent', status: 'idle', progress: 0, message: 'Waiting...' },
+  ]);
+  const [expanded, setExpanded] = useState(true);
+
+  const updateAgent = useCallback((id: string, updates: Partial<SubAgent>) => {
+    setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
+  }, []);
+
+  const removeAgent = useCallback((id: string) => {
+    setAgents((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
+  const addAgent = useCallback(() => {
+    const newAgent: SubAgent = {
+      id: Date.now().toString(),
+      name: `Agent ${agents.length + 1}`,
+      status: 'idle',
+      progress: 0,
+      message: 'Initializing...',
+    };
+    setAgents((prev) => [...prev, newAgent]);
+  }, [agents.length]);
+
+  return (
+    <div className={cn('bg-[#1a1a24] rounded-lg border border-[#2a2a3a]', className)}>
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[#13131a] transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-emerald-400" />
+          <span className="text-sm font-medium text-slate-100">Agent Orchestrator</span>
+          <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs">
+            {agents.filter((a) => a.status === 'running').length} active
+          </span>
+        </div>
+        <motion.div animate={{ rotate: expanded ? 180 : 0 }}>
+          <ChevronDown className="w-4 h-4 text-slate-500" />
+        </motion.div>
+      </button>
+
+      {/* Content */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            className="border-t border-[#2a2a3a]"
+          >
+            <div className="p-3 space-y-2">
+              {agents.map((agent) => (
+                <AgentCard
+                  key={agent.id}
+                  agent={agent}
+                  onUpdate={updateAgent}
+                  onRemove={removeAgent}
+                />
+              ))}
+
+              {/* Add Agent Button */}
+              <button
+                onClick={addAgent}
+                className="w-full py-2 flex items-center justify-center gap-2 text-sm text-slate-500 hover:text-indigo-400 border border-dashed border-[#2a2a3a] hover:border-indigo-500 rounded-lg transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Spawn New Agent
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AgentCard({
+  agent,
+  onUpdate,
+  onRemove,
+}: {
+  agent: SubAgent;
+  onUpdate: (id: string, updates: Partial<SubAgent>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const statusColors = {
+    idle: 'bg-slate-500',
+    running: 'bg-amber-500 animate-pulse',
+    completed: 'bg-emerald-500',
+    error: 'bg-red-500',
+  };
+
+  return (
+    <motion.div
+      layout
+      className="p-3 rounded-lg bg-[#13131a] border border-[#2a2a3a] group"
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 cursor-grab text-slate-600 group-hover:text-slate-400">
+          <GripVertical className="w-4 h-4" />
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <div className={cn('w-2 h-2 rounded-full', statusColors[agent.status])} />
+            <span className="text-sm text-slate-100 truncate">{agent.name}</span>
+          </div>
+          <div className="mt-1 text-xs text-slate-400 truncate">{agent.message}</div>
+
+          {/* Progress Bar */}
+          {agent.status === 'running' && (
+            <div className="mt-2">
+              <div className="h-1 bg-[#1a1a24] rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-indigo-500"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${agent.progress}%` }}
+                />
+              </div>
+              <div className="mt-1 text-xs text-slate-500">{agent.progress}%</div>
+            </div>
+          )}
+        </div>
+
+        <button
+          onClick={() => onRemove(agent.id)}
+          className="p-1 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+===== FILE: src/components/canvas/AgentNode.tsx =====
+'use client';
+
+import { memo } from 'react';
+import { Handle, Position, Node } from '@xyflow/react';
+import { motion } from 'framer-motion';
+import { Bot, Zap, Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface AgentNodeData extends Record<string, unknown> {
+  label: string;
+  description: string;
+  status?: 'ready' | 'running' | 'idle';
+  selected?: boolean;
+}
+
+export const AgentNode = memo(function AgentNode({ data, selected }: { data: AgentNodeData; selected?: boolean }) {
+  const statusColors = {
+    ready: 'bg-emerald-500',
+    running: 'bg-amber-500 animate-pulse',
+    idle: 'bg-slate-500',
+  };
+
+  const status = data.status || 'idle';
+
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      whileHover={{ scale: 1.02 }}
+      className={cn(
+        'px-4 py-3 rounded-lg bg-[#1a1a24] border-2 min-w-[180px] transition-all duration-200',
+        selected
+          ? 'border-emerald-500 shadow-lg shadow-emerald-500/30'
+          : 'border-[#2a2a3a] hover:border-emerald-400'
+      )}
+    >
+      <Handle type="target" position={Position.Top} className="w-3 h-3 bg-emerald-500" />
+
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center flex-shrink-0 relative">
+          <Bot className="w-5 h-5 text-emerald-400" />
+          <motion.div
+            className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-white"
+            animate={status === 'running' ? { scale: [1, 1.2, 1] } : {}}
+          >
+            <div className={cn('w-full h-full rounded-full', statusColors[status])} />
+          </motion.div>
+        </div>
+        <div className="min-w-0">
+          <div className="font-medium text-slate-100 text-sm truncate">{data.label}</div>
+          <div className="text-xs text-slate-400 mt-0.5 truncate">{data.description}</div>
+        </div>
+      </div>
+
+      <div className="mt-2 pt-2 border-t border-[#2a2a3a] flex items-center gap-3">
+        <div className="flex items-center gap-1">
+          <Zap className="w-3 h-3 text-amber-500" />
+          <span className="text-xs text-slate-400">3</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Clock className="w-3 h-3 text-slate-500" />
+          <span className="text-xs text-slate-400">{status}</span>
+        </div>
+      </div>
+
+      <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-emerald-500" />
+    </motion.div>
+  );
+});
+===== FILE: src/components/canvas/BlueprintNode.tsx =====
+'use client';
+
+import { memo } from 'react';
+import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { motion } from 'framer-motion';
+import { FileCode, GitBranch } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface BlueprintNodeData extends Record<string, unknown> {
+  label: string;
+  description: string;
+  selected?: boolean;
+}
+
+type BlueprintNodeType = Node<BlueprintNodeData, 'blueprint'>;
+
+export const BlueprintNode = memo(function BlueprintNode({ data, selected }: { data: BlueprintNodeData; selected?: boolean }) {
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      whileHover={{ scale: 1.02 }}
+      className={cn(
+        'px-4 py-3 rounded-lg bg-[#1a1a24] border-2 min-w-[180px] transition-all duration-200',
+        selected
+          ? 'border-indigo-500 shadow-lg shadow-indigo-500/30'
+          : 'border-[#2a2a3a] hover:border-indigo-400'
+      )}
+    >
+      <Handle type="target" position={Position.Top} className="w-3 h-3 bg-indigo-500" />
+
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
+          <FileCode className="w-5 h-5 text-indigo-400" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-medium text-slate-100 text-sm truncate">{data.label}</div>
+          <div className="text-xs text-slate-400 mt-0.5 truncate">{data.description}</div>
+        </div>
+      </div>
+
+      <div className="mt-2 pt-2 border-t border-[#2a2a3a] flex items-center gap-2">
+        <GitBranch className="w-3 h-3 text-slate-500" />
+        <span className="text-xs text-slate-500">Blueprint v1.0</span>
+      </div>
+
+      <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-indigo-500" />
+    </motion.div>
+  );
+});
+===== FILE: src/components/canvas/CodeflowCanvas.tsx =====
+'use client';
+
+import { useCallback, useState } from 'react';
+import {
+  ReactFlow,
+  Controls,
+  Background,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Connection,
+  Node,
+  Edge,
+  BackgroundVariant,
+  NodeTypes,
+  Panel,
+} from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { motion, AnimatePresence } from 'framer-motion';
+import { BlueprintNode } from './BlueprintNode';
+import { AgentNode } from './AgentNode';
+import { GhostNode } from './GhostNode';
+import { TwinNode } from './TwinNode';
+import { ExecutionNode } from './ExecutionNode';
+import { cn } from '@/lib/utils';
+
+type PlaybackState = 'stopped' | 'playing' | 'paused' | 'recording';
+
+// Custom node types
+const nodeTypes: NodeTypes = {
+  blueprint: BlueprintNode,
+  agent: AgentNode,
+  ghost: GhostNode,
+  twin: TwinNode,
+  execution: ExecutionNode,
+};
+
+// Initial demo nodes
+const initialNodes: Node[] = [
+  {
+    id: '1',
+    type: 'blueprint',
+    position: { x: 250, y: 100 },
+    data: {
+      label: 'Blueprint Generator',
+      description: 'Generate code blueprints',
+      selected: false,
+    },
+  },
+  {
+    id: '2',
+    type: 'agent',
+    position: { x: 100, y: 280 },
+    data: {
+      label: 'Agent Orchestrator',
+      description: 'Orchestrate subagents',
+      status: 'ready',
+      selected: false,
+    },
+  },
+  {
+    id: '3',
+    type: 'ghost',
+    position: { x: 400, y: 280 },
+    data: {
+      label: 'Ghost Node',
+      description: 'Evolution candidate',
+      fitness: 0.85,
+      selected: false,
+    },
+  },
+  {
+    id: '4',
+    type: 'twin',
+    position: { x: 250, y: 450 },
+    data: {
+      label: 'Digital Twin',
+      description: 'Simulation state',
+      syncStatus: 'synced',
+      selected: false,
+    },
+  },
+  {
+    id: '5',
+    type: 'execution',
+    position: { x: 550, y: 280 },
+    data: {
+      label: 'Execution Engine',
+      description: 'Run generated code',
+      output: 'console.log("Hello")',
+      selected: false,
+    },
+  },
+];
+
+const initialEdges: Edge[] = [
+  { id: 'e1-2', source: '1', target: '2', animated: true },
+  { id: 'e2-3', source: '2', target: '3', animated: true },
+  { id: 'e3-4', source: '3', target: '4', animated: true },
+  { id: 'e2-5', source: '2', target: '5', animated: true },
+];
+
+interface CodeflowCanvasProps {
+  playbackState: PlaybackState;
+  className?: string;
+}
+
+export function CodeflowCanvas({ playbackState, className }: CodeflowCanvasProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+
+  const onConnect = useCallback(
+    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges]
+  );
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node.id);
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: { ...n.data, selected: n.id === node.id },
+      }))
+    );
+  }, [setNodes]);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedNode(null);
+    setNodes((nds) =>
+      nds.map((n) => ({
+        ...n,
+        data: { ...n.data, selected: false },
+      }))
+    );
+  }, [setNodes]);
+
+  return (
+    <div className={cn('w-full h-full', className)}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        nodeTypes={nodeTypes}
+        fitView
+        className="bg-[#0a0a0f]"
+      >
+        <Controls className="bg-[#13131a] border border-[#2a2a3a] rounded-lg" />
+        <MiniMap
+          className="bg-[#13131a] border border-[#2a2a3a] rounded-lg"
+          nodeColor={(node) => {
+            switch (node.type) {
+              case 'blueprint':
+                return '#6366f1';
+              case 'agent':
+                return '#10b981';
+              case 'ghost':
+                return '#22d3ee';
+              case 'twin':
+                return '#f59e0b';
+              case 'execution':
+                return '#ef4444';
+              default:
+                return '#6366f1';
+            }
+          }}
+          maskColor="rgba(10, 10, 15, 0.8)"
+        />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
+          size={1}
+          color="#2a2a3a"
+        />
+
+        {/* Info Panel */}
+        <Panel position="top-left" className="bg-[#13131a]/90 border border-[#2a2a3a] rounded-lg p-3">
+          <div className="text-sm text-slate-300">
+            <span className="text-slate-500">Mode:</span>{' '}
+            <span className={cn(
+              playbackState === 'playing' && 'text-emerald-400',
+              playbackState === 'paused' && 'text-amber-400',
+              playbackState === 'recording' && 'text-red-400',
+            )}>
+              {playbackState.toUpperCase()}
+            </span>
+          </div>
+        </Panel>
+      </ReactFlow>
+
+      {/* Selection glow overlay for selected node */}
+      <AnimatePresence>
+        {selectedNode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none"
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+===== FILE: src/components/canvas/ExecutionNode.tsx =====
+'use client';
+
+import { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import { motion } from 'framer-motion';
+import { Terminal, Play, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface ExecutionNodeData extends Record<string, unknown> {
+  label: string;
+  description: string;
+  output?: string;
+  status?: 'idle' | 'running' | 'success' | 'error';
+  selected?: boolean;
+}
+
+export const ExecutionNode = memo(function ExecutionNode({ data, selected }: { data: ExecutionNodeData; selected?: boolean }) {
+  const status = data.status || 'idle';
+
+  const statusIcons = {
+    idle: <Terminal className="w-3 h-3 text-slate-500" />,
+    running: <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity }}><Loader className="w-3 h-3 text-amber-500" /></motion.div>,
+    success: <CheckCircle className="w-3 h-3 text-emerald-500" />,
+    error: <XCircle className="w-3 h-3 text-red-500" />,
+  };
+
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      whileHover={{ scale: 1.02 }}
+      className={cn(
+        'px-4 py-3 rounded-lg bg-[#1a1a24] border-2 min-w-[180px] transition-all duration-200',
+        selected
+          ? 'border-red-500 shadow-lg shadow-red-500/30'
+          : 'border-[#2a2a3a] hover:border-red-400'
+      )}
+    >
+      <Handle type="target" position={Position.Top} className="w-3 h-3 bg-red-500" />
+
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+          <Play className="w-5 h-5 text-red-400" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-medium text-slate-100 text-sm truncate">{data.label}</div>
+          <div className="text-xs text-slate-400 mt-0.5 truncate">{data.description}</div>
+        </div>
+      </div>
+
+      {/* Code output preview */}
+      <div className="mt-2 pt-2 border-t border-[#2a2a3a] bg-[#0a0a0f] rounded p-2 font-mono text-xs text-slate-400 max-h-12 overflow-hidden">
+        {data.output || '// No output yet'}
+      </div>
+
+      <div className="mt-2 flex items-center gap-2">
+        {statusIcons[status]}
+        <span className="text-xs text-slate-500 uppercase">{status}</span>
+      </div>
+
+      <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-red-500" />
+    </motion.div>
+  );
+});
+===== FILE: src/components/canvas/GhostNode.tsx =====
+'use client';
+
+import { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import { motion } from 'framer-motion';
+import { Ghost, Dna, Gauge } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface GhostNodeData extends Record<string, unknown> {
+  label: string;
+  description: string;
+  fitness?: number;
+  selected?: boolean;
+}
+
+export const GhostNode = memo(function GhostNode({ data, selected }: { data: GhostNodeData; selected?: boolean }) {
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      whileHover={{ scale: 1.02 }}
+      className={cn(
+        'px-4 py-3 rounded-lg bg-[#1a1a24] border-2 border-dashed min-w-[180px] transition-all duration-200',
+        selected
+          ? 'border-cyan-400 shadow-lg shadow-cyan-500/30'
+          : 'border-cyan-500/50 hover:border-cyan-400',
+        'ghost-node'
+      )}
+    >
+      <Handle type="target" position={Position.Top} className="w-3 h-3 bg-cyan-500" />
+
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+          <Ghost className="w-5 h-5 text-cyan-400" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-medium text-slate-100 text-sm truncate">{data.label}</div>
+          <div className="text-xs text-slate-400 mt-0.5 truncate">{data.description}</div>
+        </div>
+      </div>
+
+      <div className="mt-2 pt-2 border-t border-cyan-500/30 flex items-center gap-3">
+        <div className="flex items-center gap-1">
+          <Gauge className="w-3 h-3 text-cyan-500" />
+          <span className="text-xs text-cyan-400">{((data.fitness || 0) * 100).toFixed(0)}%</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <Dna className="w-3 h-3 text-cyan-500/70" />
+          <span className="text-xs text-slate-500">gen: 42</span>
+        </div>
+      </div>
+
+      {/* Ghost pulse effect */}
+      <motion.div
+        className="absolute inset-0 rounded-lg border border-cyan-400/30"
+        animate={{
+          opacity: [0.3, 0.6, 0.3],
+          scale: [1, 1.02, 1],
+        }}
+        transition={{
+          duration: 3,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+
+      <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-cyan-500" />
+    </motion.div>
+  );
+});
+===== FILE: src/components/canvas/TwinNode.tsx =====
+'use client';
+
+import { memo } from 'react';
+import { Handle, Position } from '@xyflow/react';
+import { motion } from 'framer-motion';
+import { Building2, RefreshCw, Activity } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface TwinNodeData extends Record<string, unknown> {
+  label: string;
+  description: string;
+  syncStatus?: 'synced' | 'syncing' | 'error';
+  selected?: boolean;
+}
+
+export const TwinNode = memo(function TwinNode({ data, selected }: { data: TwinNodeData; selected?: boolean }) {
+  const syncColors = {
+    synced: 'text-emerald-500',
+    syncing: 'text-amber-500',
+    error: 'text-red-500',
+  };
+
+  const syncStatus = data.syncStatus || 'synced';
+
+  return (
+    <motion.div
+      initial={{ scale: 0.9, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      whileHover={{ scale: 1.02 }}
+      className={cn(
+        'px-4 py-3 rounded-lg bg-[#1a1a24] border-2 min-w-[180px] transition-all duration-200',
+        selected
+          ? 'border-amber-500 shadow-lg shadow-amber-500/30'
+          : 'border-[#2a2a3a] hover:border-amber-400'
+      )}
+    >
+      <Handle type="target" position={Position.Top} className="w-3 h-3 bg-amber-500" />
+
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0 relative">
+          <Building2 className="w-5 h-5 text-amber-400" />
+          {syncStatus === 'syncing' && (
+            <motion.div
+              className="absolute -top-0.5 -right-0.5"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            >
+              <RefreshCw className="w-3 h-3 text-amber-500" />
+            </motion.div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <div className="font-medium text-slate-100 text-sm truncate">{data.label}</div>
+          <div className="text-xs text-slate-400 mt-0.5 truncate">{data.description}</div>
+        </div>
+      </div>
+
+      <div className="mt-2 pt-2 border-t border-[#2a2a3a] flex items-center gap-2">
+        <div className={cn('flex items-center gap-1', syncColors[syncStatus])}>
+          <Activity className="w-3 h-3" />
+          <span className="text-xs uppercase">{syncStatus}</span>
+        </div>
+      </div>
+
+      <Handle type="source" position={Position.Bottom} className="w-3 h-3 bg-amber-500" />
+    </motion.div>
+  );
+});
+===== FILE: src/components/canvas/VCRControls.tsx =====
+'use client';
+
+import { Play, Pause, Square, Circle, SkipForward, SkipBack } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+
+type PlaybackState = 'stopped' | 'playing' | 'paused' | 'recording';
+
+interface VCRControlsProps {
+  state: PlaybackState;
+  onStateChange: (state: PlaybackState) => void;
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onRecord: () => void;
+  onFastForward: () => void;
+  onRewind: () => void;
+  className?: string;
+}
+
+export function VCRControls({
+  state,
+  onStateChange,
+  onPlay,
+  onPause,
+  onStop,
+  onRecord,
+  onFastForward,
+  onRewind,
+  className,
+}: VCRControlsProps) {
+  return (
+    <div className={cn('flex items-center gap-3', className)}>
+      {/* REW - Rewind */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={onRewind}
+        className="vcr-button group"
+        title="Rewind"
+      >
+        <SkipBack className="w-5 h-5 text-slate-400 group-hover:text-slate-200" />
+      </motion.button>
+
+      {/* PLAY */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={onPlay}
+        className={cn(
+          'vcr-button',
+          state === 'playing' && 'playing'
+        )}
+        title={state === 'playing' ? 'Playing' : 'Play'}
+      >
+        <Play className={cn('w-5 h-5', state === 'playing' ? 'text-white' : 'text-emerald-500')} />
+      </motion.button>
+
+      {/* PAUSE */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={onPause}
+        className={cn(
+          'vcr-button',
+          state === 'paused' && 'paused'
+        )}
+        title={state === 'paused' ? 'Paused' : 'Pause'}
+      >
+        <Pause className={cn('w-5 h-5', state === 'paused' ? 'text-white' : 'text-amber-500')} />
+      </motion.button>
+
+      {/* STOP */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={onStop}
+        className={cn(
+          'vcr-button',
+          state === 'stopped' && 'bg-[#1a1a24] border-slate-600'
+        )}
+        title="Stop"
+      >
+        <Square className="w-5 h-5 text-slate-400" />
+      </motion.button>
+
+      {/* RECORD */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={onRecord}
+        className={cn(
+          'vcr-button',
+          state === 'recording' && 'recording'
+        )}
+        title="Record"
+      >
+        <Circle className={cn('w-5 h-5', state === 'recording' ? 'text-white' : 'text-red-500 fill-red-500/30')} />
+      </motion.button>
+
+      {/* FF - Fast Forward */}
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onClick={onFastForward}
+        className="vcr-button group"
+        title="Fast Forward"
+      >
+        <SkipForward className="w-5 h-5 text-slate-400 group-hover:text-slate-200" />
+      </motion.button>
+
+      {/* Divider */}
+      <div className="w-px h-8 bg-[#2a2a3a] mx-2" />
+
+      {/* State Display */}
+      <div className="px-3 py-1.5 rounded bg-[#0a0a0f] border border-[#2a2a3a]">
+        <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
+          {state}
+        </span>
+      </div>
+    </div>
+  );
+}
+===== FILE: src/components/canvas/index.ts =====
+export { CodeflowCanvas } from './CodeflowCanvas';
+export { VCRControls } from './VCRControls';
+export { BlueprintNode } from './BlueprintNode';
+export { AgentNode } from './AgentNode';
+export { GhostNode } from './GhostNode';
+export { TwinNode } from './TwinNode';
+export { ExecutionNode } from './ExecutionNode';
+===== FILE: src/components/panels/LeftSidebar.tsx =====
+'use client';
+
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  FolderOpen,
+  Database,
+  GitBranch,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  File,
+  Folder,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface LeftSidebarProps {
+  className?: string;
+}
+
+interface NavItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  content: React.ReactNode;
+}
+
+export function LeftSidebar({ className }: LeftSidebarProps) {
+  const [expanded, setExpanded] = useState<string>('files');
+  const [activeTab, setActiveTab] = useState('files');
+
+  const tabs: NavItem[] = [
+    {
+      id: 'files',
+      label: 'Files',
+      icon: FolderOpen,
+      content: <FileTree />,
+    },
+    {
+      id: 'store',
+      label: 'Store',
+      icon: Database,
+      content: <StorePanel />,
+    },
+    {
+      id: 'version',
+      label: 'Version',
+      icon: GitBranch,
+      content: <VersionPanel />,
+    },
+    {
+      id: 'prd',
+      label: 'PRD',
+      icon: FileText,
+      content: <PRDPanel />,
+    },
+  ];
+
+  return (
+    <div className={cn('h-full bg-[#13131a] border-r border-[#2a2a3a] flex flex-col', className)}>
+      {/* Tab Headers */}
+      <div className="flex border-b border-[#2a2a3a]">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setActiveTab(tab.id);
+              setExpanded(tab.id);
+            }}
+            className={cn(
+              'flex-1 py-3 flex items-center justify-center transition-colors relative',
+              activeTab === tab.id
+                ? 'text-indigo-400'
+                : 'text-slate-500 hover:text-slate-300'
+            )}
+          >
+            <tab.icon className="w-4 h-4" />
+            {activeTab === tab.id && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500"
+              />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto">
+        {tabs.find((t) => t.id === expanded)?.content}
+      </div>
+    </div>
+  );
+}
+
+function FileTree() {
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src', 'src/components']));
+
+  const toggleFolder = (id: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const files = [
+    {
+      id: 'src',
+      label: 'src',
+      type: 'folder' as const,
+      children: [
+        {
+          id: 'src/components',
+          label: 'components',
+          type: 'folder' as const,
+          children: [
+            { id: 'src/components/canvas', label: 'canvas', type: 'folder' as const, children: [] },
+            { id: 'src/components/panels', label: 'panels', type: 'folder' as const, children: [] },
+            { id: 'src/components/ui', label: 'ui', type: 'folder' as const, children: [] },
+            { id: 'src/components/Header.tsx', label: 'Header.tsx', type: 'file' as const },
+          ],
+        },
+        { id: 'src/lib', label: 'lib', type: 'folder' as const, children: [] },
+        { id: 'src/app', label: 'app', type: 'folder' as const, children: [] },
+      ],
+    },
+    {
+      id: 'package.json',
+      label: 'package.json',
+      type: 'file' as const,
+    },
+    {
+      id: 'tsconfig.json',
+      label: 'tsconfig.json',
+      type: 'file' as const,
+    },
+  ];
+
+  return (
+    <div className="p-2 text-sm">
+      {files.map((file) => (
+        <FileTreeItem
+          key={file.id}
+          item={file}
+          expandedFolders={expandedFolders}
+          onToggle={toggleFolder}
+          level={0}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FileTreeItem({
+  item,
+  expandedFolders,
+  onToggle,
+  level,
+}: {
+  item: { id: string; label: string; type: 'file' | 'folder'; children?: any[] };
+  expandedFolders: Set<string>;
+  onToggle: (id: string) => void;
+  level: number;
+}) {
+  const isExpanded = expandedFolders.has(item.id);
+
+  return (
+    <div>
+      <button
+        onClick={() => item.type === 'folder' && onToggle(item.id)}
+        className={cn(
+          'w-full flex items-center gap-2 py-1 px-2 rounded hover:bg-[#1a1a24] text-slate-300 text-left',
+          item.type === 'folder' ? 'cursor-pointer' : 'cursor-default'
+        )}
+        style={{ paddingLeft: `${level * 16 + 8}px` }}
+      >
+        {item.type === 'folder' ? (
+          <>
+            {isExpanded ? (
+              <ChevronDown className="w-3 h-3 text-slate-500" />
+            ) : (
+              <ChevronRight className="w-3 h-3 text-slate-500" />
+            )}
+            <Folder className="w-4 h-4 text-amber-500" />
+          </>
+        ) : (
+          <>
+            <span className="w-3" />
+            <File className="w-4 h-4 text-slate-500" />
+          </>
+        )}
+        <span className="truncate">{item.label}</span>
+      </button>
+      {item.type === 'folder' && isExpanded && item.children && (
+        <div>
+          {item.children.map((child: any) => (
+            <FileTreeItem
+              key={child.id}
+              item={child}
+              expandedFolders={expandedFolders}
+              onToggle={onToggle}
+              level={level + 1}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StorePanel() {
+  return (
+    <div className="p-3 text-sm">
+      <div className="text-xs text-slate-500 uppercase tracking-wider mb-3">Session Store</div>
+      <div className="space-y-2">
+        <div className="flex justify-between text-slate-300">
+          <span>Checkpoints</span>
+          <span className="text-indigo-400">12</span>
+        </div>
+        <div className="flex justify-between text-slate-300">
+          <span>Pending</span>
+          <span className="text-amber-400">3</span>
+        </div>
+        <div className="flex justify-between text-slate-300">
+          <span>Approved</span>
+          <span className="text-emerald-400">8</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VersionPanel() {
+  return (
+    <div className="p-3 text-sm">
+      <div className="text-xs text-slate-500 uppercase tracking-wider mb-3">Recent Changes</div>
+      <div className="space-y-2">
+        <div className="p-2 rounded bg-[#1a1a24] border border-[#2a2a3a]">
+          <div className="text-slate-300 text-xs">feat: VCR controls</div>
+          <div className="text-slate-500 text-xs">2 hours ago</div>
+        </div>
+        <div className="p-2 rounded bg-[#1a1a24] border border-[#2a2a3a]">
+          <div className="text-slate-300 text-xs">fix: canvas render</div>
+          <div className="text-slate-500 text-xs">5 hours ago</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PRDPanel() {
+  return (
+    <div className="p-3 text-sm">
+      <div className="text-xs text-slate-500 uppercase tracking-wider mb-3">PRD Documents</div>
+      <div className="space-y-2">
+        <div className="p-2 rounded bg-[#1a1a24] border border-[#2a2a3a]">
+          <div className="text-slate-300 text-xs">Codeflow v2.0 PRD</div>
+          <div className="text-slate-500 text-xs">Processing</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+===== FILE: src/components/panels/RightPanel.tsx =====
+'use client';
+
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Play,
+  BarChart3,
+  Building2,
+  Dna,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  Zap,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface RightPanelProps {
+  className?: string;
+}
+
+interface PanelSection {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+  content: React.ReactNode;
+  collapsed: boolean;
+}
+
+export function RightPanel({ className }: RightPanelProps) {
+  const [sections, setSections] = useState<PanelSection[]>([
+    {
+      id: 'execution',
+      label: 'Execution',
+      icon: Play,
+      collapsed: false,
+      content: <ExecutionPanel />,
+    },
+    {
+      id: 'analysis',
+      label: 'Analysis',
+      icon: BarChart3,
+      collapsed: false,
+      content: <AnalysisPanel />,
+    },
+    {
+      id: 'twin',
+      label: 'Digital Twin',
+      icon: Building2,
+      collapsed: false,
+      content: <TwinPanel />,
+    },
+    {
+      id: 'evolution',
+      label: 'Evolution',
+      icon: Dna,
+      collapsed: false,
+      content: <EvolutionPanel />,
+    },
+  ]);
+
+  const toggleSection = (id: string) => {
+    setSections((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, collapsed: !s.collapsed } : s))
+    );
+  };
+
+  return (
+    <div className={cn('h-full bg-[#13131a] border-l border-[#2a2a3a] flex flex-col', className)}>
+      <div className="p-3 border-b border-[#2a2a3a]">
+        <h2 className="text-sm font-semibold text-slate-100">Tools</h2>
+      </div>
+      <div className="flex-1 overflow-auto">
+        {sections.map((section) => (
+          <div key={section.id}>
+            <button
+              onClick={() => toggleSection(section.id)}
+              className="w-full px-3 py-2 flex items-center justify-between hover:bg-[#1a1a24] transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <section.icon className="w-4 h-4 text-indigo-400" />
+                <span className="text-sm text-slate-300">{section.label}</span>
+              </div>
+              {section.collapsed ? (
+                <ChevronDown className="w-4 h-4 text-slate-500" />
+              ) : (
+                <ChevronUp className="w-4 h-4 text-slate-500" />
+              )}
+            </button>
+            {!section.collapsed && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="border-t border-[#2a2a3a]"
+              >
+                {section.content}
+              </motion.div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ExecutionPanel() {
+  const [logs, setLogs] = useState([
+    { time: '10:23:45', message: 'Executing blueprint...', type: 'info' },
+    { time: '10:23:46', message: 'Agent spawned', type: 'success' },
+    { time: '10:23:47', message: 'Code generated', type: 'success' },
+  ]);
+
+  return (
+    <div className="p-3 text-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <button className="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 text-xs flex items-center gap-1">
+          <Play className="w-3 h-3" /> Run
+        </button>
+        <button className="px-2 py-1 rounded bg-[#1a1a24] text-slate-400 text-xs flex items-center gap-1">
+          <RotateCcw className="w-3 h-3" /> Reset
+        </button>
+      </div>
+      <div className="space-y-1 font-mono text-xs">
+        {logs.map((log, i) => (
+          <div key={i} className="flex gap-2 text-slate-400">
+            <span className="text-slate-500">[{log.time}]</span>
+            <span className={cn(
+              log.type === 'error' && 'text-red-400',
+              log.type === 'success' && 'text-emerald-400',
+              log.type === 'info' && 'text-slate-300',
+            )}>
+              {log.message}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnalysisPanel() {
+  return (
+    <div className="p-3 text-sm">
+      <div className="space-y-3">
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-400">Complexity</span>
+            <span className="text-indigo-400">72%</span>
+          </div>
+          <div className="h-1.5 bg-[#1a1a24] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-indigo-500"
+              initial={{ width: 0 }}
+              animate={{ width: '72%' }}
+            />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-400">Coverage</span>
+            <span className="text-emerald-400">85%</span>
+          </div>
+          <div className="h-1.5 bg-[#1a1a24] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-emerald-500"
+              initial={{ width: 0 }}
+              animate={{ width: '85%' }}
+            />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-400">Performance</span>
+            <span className="text-amber-400">64%</span>
+          </div>
+          <div className="h-1.5 bg-[#1a1a24] rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-amber-500"
+              initial={{ width: 0 }}
+              animate={{ width: '64%' }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TwinPanel() {
+  const [syncing, setSyncing] = useState(false);
+
+  return (
+    <div className="p-3 text-sm">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-slate-400">Sync Status</span>
+        <span className={cn(
+          'px-2 py-0.5 rounded text-xs',
+          syncing ? 'bg-amber-500/20 text-amber-400' : 'bg-emerald-500/20 text-emerald-400'
+        )}>
+          {syncing ? 'Syncing' : 'Synced'}
+        </span>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => setSyncing(true)}
+          className="flex-1 px-2 py-1.5 rounded bg-[#1a1a24] border border-[#2a2a3a] text-xs text-slate-300 hover:border-indigo-500 transition-colors"
+        >
+          Sync Now
+        </button>
+        <button className="flex-1 px-2 py-1.5 rounded bg-[#1a1a24] border border-[#2a2a3a] text-xs text-slate-300 hover:border-indigo-500 transition-colors">
+          Snapshot
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EvolutionPanel() {
+  const [generation, setGeneration] = useState(42);
+  const [fitness, setFitness] = useState(0.85);
+
+  return (
+    <div className="p-3 text-sm">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400">Generation</span>
+          <span className="text-lg font-mono text-cyan-400">{generation}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400">Best Fitness</span>
+          <span className="text-lg font-mono text-emerald-400">{(fitness * 100).toFixed(0)}%</span>
+        </div>
+        <div className="flex gap-2">
+          <button className="flex-1 px-2 py-1.5 rounded bg-cyan-500/20 text-cyan-400 text-xs flex items-center justify-center gap-1 hover:bg-cyan-500/30 transition-colors">
+            <Zap className="w-3 h-3" /> Evolve
+          </button>
+          <button className="flex-1 px-2 py-1.5 rounded bg-[#1a1a24] border border-[#2a2a3a] text-xs text-slate-300 hover:border-indigo-500 transition-colors">
+            Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+===== FILE: src/components/panels/TerminalPanel.tsx =====
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Terminal as TerminalIcon, ChevronUp, ChevronDown, Zap, Send } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useCanvasStore } from '@/lib/codeflow/canvas';
+
+interface TerminalPanelProps {
+  className?: string;
+  onClose: () => void;
+}
+
+interface LogEntry {
+  id: number;
+  type: 'info' | 'warn' | 'error' | 'success' | 'prompt';
+  message: string;
+}
+
+export function TerminalPanel({ className, onClose }: TerminalPanelProps) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [input, setInput] = useState('');
+  const [minimized, setMinimized] = useState(false);
+  const [mode, setMode] = useState<'terminal' | 'prompt'>('prompt');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { setNodes } = useCanvasStore();
+  const logIdRef = useRef(1);
+
+  useEffect(() => {
+    setLogs([
+      { id: logIdRef.current++, type: 'success', message: 'Codeflow IDE initialized' },
+      { id: logIdRef.current++, type: 'info', message: 'Loading @abhinav2203/codeflow-core...' },
+      { id: logIdRef.current++, type: 'success', message: 'All packages loaded successfully' },
+    ]);
+  }, []);
+
+  const processPrompt = useCallback(async (text: string) => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+
+    setLogs(prev => [...prev, {
+      id: logIdRef.current++,
+      type: 'prompt',
+      message: `🎯 Prompt: ${text}`
+    }]);
+
+    const steps = [
+      '📋 Processing PRD...',
+      '🔧 Generating Blueprint...',
+      '🤖 Spawning Coder Agent...',
+      '🤖 Spawning Reviewer Agent...',
+      '🤖 Spawning Tester Agent...',
+      '🔍 Running CodeRAG search...',
+      '⚡ Executing code generation...',
+      '📊 Analyzing code quality...',
+      '👥 Syncing Digital Twin...',
+      '🧬 Evolution optimization...',
+      '✅ Pipeline complete!'
+    ];
+
+    for (const step of steps) {
+      await new Promise(r => setTimeout(r, 400));
+      setLogs(prev => [...prev, {
+        id: logIdRef.current++,
+        type: 'info',
+        message: step
+      }]);
+    }
+
+    setNodes([
+      { id: '1', type: 'blueprint', position: { x: 250, y: 50 }, data: { label: 'Blueprint Generator', description: 'Generate code blueprints' } },
+      { id: '2', type: 'agent', position: { x: 100, y: 200 }, data: { label: 'Coder Agent', description: 'Write code' } },
+      { id: '3', type: 'agent', position: { x: 400, y: 200 }, data: { label: 'Reviewer Agent', description: 'Review code' } },
+      { id: '4', type: 'execution', position: { x: 250, y: 350 }, data: { label: 'Execution Engine', description: 'Run code' } },
+    ]);
+
+    setIsProcessing(false);
+  }, [setNodes, isProcessing]);
+
+  const submitCommand = () => {
+    if (!input.trim()) return;
+
+    if (mode === 'prompt') {
+      processPrompt(input);
+    } else {
+      setLogs(prev => [
+        ...prev,
+        { id: logIdRef.current++, type: 'info', message: `$ ${input}` },
+        { id: logIdRef.current++, type: 'success', message: `Command executed: ${input}` },
+      ]);
+    }
+    setInput('');
+  };
+
+  if (minimized) {
+    return (
+      <div className={cn('h-10 bg-[#13131a] border-t border-[#2a2a3a] flex items-center px-3', className)}>
+        <TerminalIcon className="w-4 h-4 text-indigo-400 mr-2" />
+        <span className="text-sm text-slate-300 flex-1">Terminal</span>
+        <button onClick={() => setMinimized(false)} className="p-1 text-slate-500 hover:text-slate-300">
+          <ChevronUp className="w-4 h-4" />
+        </button>
+        <button onClick={onClose} className="p-1 text-slate-500 hover:text-red-400 ml-1">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn('bg-[#13131a] border-t border-[#2a2a3a] flex flex-col', className)}>
+      {/* Header */}
+      <div className="h-10 px-3 flex items-center justify-between border-b border-[#2a2a3a] flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <TerminalIcon className="w-4 h-4 text-indigo-400" />
+          <span className="text-sm text-slate-300">Terminal</span>
+          <div className="flex items-center gap-1 ml-4">
+            <button
+              onClick={() => setMode('prompt')}
+              className={cn(
+                'px-2 py-1 rounded text-xs transition-colors',
+                mode === 'prompt' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:text-slate-300'
+              )}
+            >
+              <Zap className="w-3 h-3 inline mr-1" />
+              Prompt
+            </button>
+            <button
+              onClick={() => setMode('terminal')}
+              className={cn(
+                'px-2 py-1 rounded text-xs transition-colors',
+                mode === 'terminal' ? 'bg-indigo-500 text-white' : 'text-slate-500 hover:text-slate-300'
+              )}
+            >
+              Terminal
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setMinimized(true)}
+            className="p-1 text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-3 font-mono text-xs space-y-1 max-h-32">
+        {logs.map((log) => (
+          <div
+            key={log.id}
+            className={cn(
+              'text-slate-300',
+              log.type === 'error' && 'text-red-400',
+              log.type === 'warn' && 'text-amber-400',
+              log.type === 'success' && 'text-emerald-400',
+              log.type === 'prompt' && 'text-indigo-400'
+            )}
+          >
+            {log.message}
+          </div>
+        ))}
+      </div>
+
+      {/* Input */}
+      <div className="h-12 px-3 flex items-center gap-2 border-t border-[#2a2a3a]">
+        {mode === 'prompt' ? (
+          <>
+            <Zap className="w-4 h-4 text-indigo-400" />
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitCommand()}
+              disabled={isProcessing}
+              className="flex-1 bg-transparent text-slate-200 text-sm outline-none font-mono placeholder-slate-500 disabled:opacity-50"
+              placeholder={isProcessing ? "Processing..." : "Describe what you want to build..."}
+            />
+            <button
+              onClick={submitCommand}
+              disabled={isProcessing}
+              className="p-2 bg-indigo-500 rounded hover:bg-indigo-600 transition-colors disabled:opacity-50"
+            >
+              <Send className="w-4 h-4 text-white" />
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-emerald-400">$</span>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && submitCommand()}
+              className="flex-1 bg-transparent text-slate-200 text-sm outline-none font-mono placeholder-slate-500"
+              placeholder="Type a command..."
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+===== FILE: src/components/panels/index.ts =====
+export { LeftSidebar } from './LeftSidebar';
+export { RightPanel } from './RightPanel';
+export { TerminalPanel } from './TerminalPanel';
+===== FILE: src/components/ui/Header.tsx =====
+'use client';
+
+import { Bug, Play, Pause, Square, Save, Settings, Terminal, HelpCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface HeaderProps {
+  onTerminalToggle: () => void;
+  terminalOpen: boolean;
+}
+
+export function Header({ onTerminalToggle, terminalOpen }: HeaderProps) {
+  return (
+    <header className="h-12 flex items-center justify-between px-4 bg-[#13131a] border-b border-[#2a2a3a]">
+      {/* Logo */}
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-cyan-400 flex items-center justify-center">
+          <span className="text-white font-bold text-sm">CF</span>
+        </div>
+        <span className="font-semibold text-slate-100">Codeflow IDE</span>
+      </div>
+
+      {/* Center - Agent Status */}
+      <div className="flex items-center gap-2">
+        <div className="px-3 py-1.5 rounded-full bg-[#1a1a24] border border-[#2a2a3a] flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-sm text-slate-300">Agent Ready</span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1">
+        <button
+          onClick={onTerminalToggle}
+          className={cn(
+            'p-2 rounded-lg transition-colors',
+            terminalOpen
+              ? 'bg-indigo-500/20 text-indigo-400'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-[#1a1a24]'
+          )}
+          title="Toggle Terminal"
+        >
+          <Terminal className="w-4 h-4" />
+        </button>
+        <button className="p-2 text-slate-400 hover:text-slate-200 hover:bg-[#1a1a24] rounded-lg transition-colors" title="Save">
+          <Save className="w-4 h-4" />
+        </button>
+        <button className="p-2 text-slate-400 hover:text-slate-200 hover:bg-[#1a1a24] rounded-lg transition-colors" title="Settings">
+          <Settings className="w-4 h-4" />
+        </button>
+        <button className="p-2 text-slate-400 hover:text-slate-200 hover:bg-[#1a1a24] rounded-lg transition-colors" title="Help">
+          <HelpCircle className="w-4 h-4" />
+        </button>
+      </div>
+    </header>
+  );
+}
+===== FILE: src/lib/codeflow/agent.ts =====
+/**
+ * codeflow-agent wrapper
+ * Orchestration layer for subagent-driven development using Claude Code agents
+ */
+import type {
+  AgentTask,
+  AgentConfig,
+  AgentStatus,
+  AgentEvent,
+  AgentOrchestrator,
+  TaskResult,
+} from '@/types/codeflow-agent';
+
+// Re-export types
+export type { AgentTask, AgentConfig, AgentStatus, AgentEvent, TaskResult };
+
+type AgentEventCallback = (event: AgentEvent) => void;
+
+class AgentOrchestratorImpl implements AgentOrchestrator {
+  private agents: Map<string, AgentStatus> = new Map();
+  private tasks: Map<string, AgentTask> = new Map();
+  private callbacks: AgentEventCallback[] = [];
+  private config: AgentConfig = {
+    maxConcurrent: 3,
+    timeout: 300000,
+    retryAttempts: 2,
+  };
+
+  async initialize(config?: Partial<AgentConfig>): Promise<void> {
+    if (config) {
+      this.config = { ...this.config, ...config };
+    }
+    console.log('[codeflow-agent] Agent orchestrator initialized with config:', this.config);
+  }
+
+  registerAgent(id: string, name: string): void {
+    this.agents.set(id, {
+      id,
+      name,
+      status: 'idle',
+      progress: 0,
+    });
+    this.emit({
+      type: 'status_change',
+      agentId: id,
+      data: { status: 'idle' },
+    });
+  }
+
+  async spawnAgent(id: string, name: string, task?: Partial<AgentTask>): Promise<void> {
+    this.registerAgent(id, name);
+
+    const agentStatus = this.agents.get(id)!;
+    agentStatus.status = 'initializing';
+    this.emit({
+      type: 'status_change',
+      agentId: id,
+      data: { status: 'initializing' },
+    });
+
+    // Simulate initialization
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    agentStatus.status = 'idle';
+    this.emit({
+      type: 'status_change',
+      agentId: id,
+      data: { status: 'idle' },
+    });
+  }
+
+  async executeTask(agentId: string, task: AgentTask): Promise<any> {
+    const agentStatus = this.agents.get(agentId);
+    if (!agentStatus) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+
+    this.tasks.set(task.id, task);
+    agentStatus.currentTask = task.id;
+    agentStatus.status = 'running';
+
+    this.emit({
+      type: 'task_start',
+      agentId,
+      data: { task },
+    });
+
+    try {
+      // Simulate task execution with progress updates
+      for (let progress = 0; progress <= 100; progress += 10) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        agentStatus.progress = progress;
+        this.emit({
+          type: 'status_change',
+          agentId,
+          data: { progress },
+        });
+      }
+
+      agentStatus.status = 'completed';
+      agentStatus.progress = 100;
+
+      this.emit({
+        type: 'task_complete',
+        agentId,
+        data: { task, output: {} },
+      });
+
+      return { success: true, taskId: task.id };
+    } catch (error: any) {
+      agentStatus.status = 'error';
+      this.emit({
+        type: 'error',
+        agentId,
+        data: { error: error.message },
+      });
+      throw error;
+    }
+  }
+
+  getAgentStatus(agentId: string): AgentStatus | undefined {
+    return this.agents.get(agentId);
+  }
+
+  listAgents(): AgentStatus[] {
+    return Array.from(this.agents.values());
+  }
+
+  onEvent(callback: AgentEventCallback): () => void {
+    this.callbacks.push(callback);
+    return () => {
+      this.callbacks = this.callbacks.filter((cb) => cb !== callback);
+    };
+  }
+
+  async terminateAgent(agentId: string): Promise<void> {
+    const agent = this.agents.get(agentId);
+    if (agent) {
+      agent.status = 'idle';
+      agent.progress = 0;
+      this.emit({
+        type: 'status_change',
+        agentId,
+        data: { status: 'terminated' },
+      });
+    }
+  }
+
+  async terminateAll(): Promise<void> {
+    for (const agent of this.agents.values()) {
+      agent.status = 'idle';
+      agent.progress = 0;
+    }
+    this.emit({
+      type: 'status_change',
+      agentId: 'all',
+      data: { status: 'terminated' },
+    });
+  }
+
+  private emit(event: AgentEvent): void {
+    event.timestamp = Date.now();
+    for (const callback of this.callbacks) {
+      callback(event);
+    }
+  }
+}
+
+// Singleton
+let orchestrator: AgentOrchestrator | null = null;
+
+export function getAgentOrchestrator(): AgentOrchestrator {
+  if (!orchestrator) {
+    orchestrator = new AgentOrchestratorImpl();
+  }
+  return orchestrator;
+}
+
+// React hook for agent orchestration
+export function useAgentOrchestrator() {
+  const orch = getAgentOrchestrator();
+
+  return {
+    agents: orch.listAgents(),
+    spawnAgent: (id: string, name: string, task?: Partial<AgentTask>) =>
+      orch.spawnAgent(id, name, task ?? {}),
+    executeTask: (agentId: string, task: AgentTask) => orch.executeTask(agentId, task),
+    getAgentStatus: (agentId: string) => orch.getAgentStatus(agentId),
+    terminateAgent: (agentId: string) => orch.terminateAgent(agentId),
+    terminateAll: () => orch.terminateAll(),
+    onEvent: (callback: AgentEventCallback) => orch.onEvent(callback),
+  };
+}
+
+// Task queue management
+export class TaskQueue {
+  private queue: { task: AgentTask; priority: number }[] = [];
+
+  enqueue(task: AgentTask, priority: number = 0): void {
+    this.queue.push({ task, priority });
+    this.queue.sort((a, b) => b.priority - a.priority);
+  }
+
+  dequeue(): AgentTask | undefined {
+    return this.queue.shift()?.task;
+  }
+
+  peek(): AgentTask | undefined {
+    return this.queue[0]?.task;
+  }
+
+  size(): number {
+    return this.queue.length;
+  }
+
+  clear(): void {
+    this.queue = [];
+  }
+}
+===== FILE: src/lib/codeflow/analysis.ts =====
+/**
+ * codeflow-analysis wrapper
+ * Analysis engine for codebase metrics and insights
+ */
+import type {
+  AnalysisReport,
+  AnalysisIssue,
+  CodeMetrics,
+  AnalysisEngine,
+  AnalysisConfig,
+  ComplexityBreakdown,
+  Suggestion,
+} from '@/types/codeflow-analysis';
+
+// Re-export types
+export type { AnalysisReport, AnalysisIssue, CodeMetrics, AnalysisConfig, ComplexityBreakdown, Suggestion };
+
+class AnalysisEngineImpl implements AnalysisEngine {
+  private results: Map<string, AnalysisReport> = new Map();
+  private cache: Map<string, AnalysisReport> = new Map();
+  private config: AnalysisConfig = {
+    maxFileSize: 1000000, // 1MB
+    excludePatterns: ['node_modules', '.git', 'dist', 'build'],
+    includePatterns: ['**/*.{ts,tsx,js,jsx}'],
+    rules: {
+      maxComplexity: 20,
+      maxLineLength: 120,
+      requireDocumentation: false,
+    },
+  };
+
+  async initialize(): Promise<void> {
+    console.log('[codeflow-analysis] Analysis engine initialized');
+  }
+
+  async analyzeFile(filePath: string, content: string): Promise<AnalysisReport> {
+    // Check cache first
+    const cached = this.cache.get(filePath);
+    if (cached) return cached;
+
+    const result: AnalysisReport = {
+      file: filePath,
+      metrics: this.calculateMetrics(content),
+      issues: this.detectIssues(content),
+      suggestions: this.generateSuggestions(content),
+    };
+
+    this.results.set(filePath, result);
+    this.cache.set(filePath, result);
+    return result;
+  }
+
+  private calculateMetrics(content: string) {
+    const lines = content.split('\n');
+    const codeLines = lines.filter(
+      (l) => l.trim() && !l.trim().startsWith('//') && !l.trim().startsWith('/*')
+    );
+    const commentLines = lines.filter(
+      (l) => l.trim().startsWith('//') || l.trim().startsWith('/*')
+    );
+    const blankLines = lines.filter((l) => !l.trim()).length;
+
+    return {
+      lines: lines.length,
+      complexity: this.calculateComplexity(content),
+      maintainability: this.calculateMaintainability(lines.length, commentLines.length),
+    };
+  }
+
+  private calculateComplexity(content: string): number {
+    const patterns = [
+      /if\s*\(/g,
+      /else\s+/g,
+      /while\s*\(/g,
+      /for\s*\(/g,
+      /case\s+/g,
+      /&&|\|\|/g,
+      /catch\s*\(/g,
+    ];
+
+    let complexity = 1;
+    for (const pattern of patterns) {
+      const matches = content.match(pattern);
+      if (matches) complexity += matches.length;
+    }
+
+    return Math.min(complexity, 100);
+  }
+
+  private calculateMaintainability(totalLines: number, commentLines: number): number {
+    const commentRatio = commentLines / Math.max(totalLines, 1);
+    const baseScore = 100 - totalLines / 100;
+    return Math.max(0, Math.min(100, baseScore + commentRatio * 20));
+  }
+
+  private detectIssues(content: string): AnalysisIssue[] {
+    const issues: AnalysisIssue[] = [];
+
+    // Check for TODO without ticket reference
+    const todoMatches = content.match(/TODO(?!\s*\[)/g);
+    if (todoMatches) {
+      issues.push({
+        severity: 'warning',
+        message: 'TODO found without ticket reference',
+        rule: 'no-orphaned-todo',
+      });
+    }
+
+    // Check for console.log
+    const consoleMatches = content.match(/console\.(log|warn|error)/g);
+    if (consoleMatches) {
+      issues.push({
+        severity: 'info',
+        message: `Found ${consoleMatches.length} console statement(s)`,
+        rule: 'no-console',
+      });
+    }
+
+    // Check for long lines
+    const lines = content.split('\n');
+    lines.forEach((line, i) => {
+      const maxLen = this.config.rules?.maxLineLength;
+      if (maxLen && line.length > maxLen) {
+        issues.push({
+          severity: 'info',
+          message: `Line exceeds ${maxLen} characters`,
+          line: i + 1,
+          rule: 'max-line-length',
+        });
+      }
+    });
+
+    // Check for unused variables (simplified)
+    const unusedVarMatches = content.match(/const\s+\w+\s*=\s*[^;]+;/g);
+    if (unusedVarMatches && unusedVarMatches.length > 10) {
+      issues.push({
+        severity: 'warning',
+        message: 'High number of variable declarations - consider refactoring',
+        rule: 'complex-declaration',
+      });
+    }
+
+    return issues;
+  }
+
+  private generateSuggestions(content: string): Suggestion[] {
+    const suggestions: Suggestion[] = [];
+
+    if (content.length > 5000) {
+      suggestions.push({
+        type: 'refactor',
+        message: 'File exceeds 5000 lines - consider splitting into smaller modules',
+        effort: 'high',
+      });
+    }
+
+    if (!content.includes('//') && !content.includes('/*')) {
+      suggestions.push({
+        type: 'best-practice',
+        message: 'No comments found - consider adding documentation',
+        effort: 'low',
+      });
+    }
+
+    return suggestions;
+  }
+
+  async analyzeProject(projectPath: string): Promise<CodeMetrics> {
+    // Simplified project analysis - real implementation would traverse files
+    return {
+      totalLines: 10000,
+      codeLines: 7500,
+      commentLines: 1500,
+      blankLines: 1000,
+      files: 50,
+      averageFileLength: 200,
+      largestFile: {
+        path: `${projectPath}/src/large-file.ts`,
+        lines: 1500,
+      },
+    };
+  }
+
+  getResults(): AnalysisReport[] {
+    return Array.from(this.results.values());
+  }
+
+  clearCache(): void {
+    this.cache.clear();
+  }
+
+  getSummary(): {
+    totalFiles: number;
+    totalIssues: number;
+    averageComplexity: number;
+  } {
+    const results = this.getResults();
+    const totalIssues = results.reduce((sum, r) => sum + r.issues.length, 0);
+    const avgComplexity =
+      results.length > 0
+        ? results.reduce((sum, r) => sum + r.metrics.complexity, 0) / results.length
+        : 0;
+
+    return {
+      totalFiles: results.length,
+      totalIssues,
+      averageComplexity: Math.round(avgComplexity),
+    };
+  }
+}
+
+// Singleton
+let analysis: AnalysisEngine | null = null;
+
+export function getAnalysisEngine(): AnalysisEngine {
+  if (!analysis) {
+    analysis = new AnalysisEngineImpl();
+  }
+  return analysis;
+}
+
+// React hook for analysis
+export function useAnalysis() {
+  const engine = getAnalysisEngine();
+
+  return {
+    results: engine.getResults(),
+    summary: engine.getSummary(),
+    analyzeFile: (path: string, content: string) => engine.analyzeFile(path, content),
+    analyzeProject: (path: string) => engine.analyzeProject(path),
+    clearCache: () => engine.clearCache(),
+  };
+}
+===== FILE: src/lib/codeflow/canvas.ts =====
+/**
+ * codeflow-canvas wrapper
+ * React Flow graph canvas with Monaco code editors and IDE layout components
+ */
+
+// Re-export components and types
+export {
+  CodeflowCanvas,
+  VCRControls,
+  BlueprintNode,
+  AgentNode,
+  GhostNode,
+  TwinNode,
+  ExecutionNode,
+} from '@/components/canvas';
+
+export type {
+  CanvasConfig,
+  NodeData,
+  EdgeData,
+  CanvasState,
+  CanvasEventHandlers,
+  MiniMapConfig,
+  ControlsConfig,
+  CodeflowCanvasNode,
+} from '@/types/codeflow-canvas';
+
+import { create } from 'zustand';
+import type { Node, Edge } from '@xyflow/react';
+import type { CanvasState } from '@/types/codeflow-canvas';
+
+// Canvas state management store
+interface ExtendedCanvasState extends CanvasState {
+  history: { nodes: Node[]; edges: Edge[] }[];
+  historyIndex: number;
+  addToHistory: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+}
+
+export const useCanvasStore = create<ExtendedCanvasState>((set, get) => ({
+  nodes: [],
+  edges: [],
+  selectedNode: null,
+  zoom: 1,
+  history: [],
+  historyIndex: -1,
+
+  setNodes: (nodes: Node[]) => {
+    set({ nodes });
+    get().addToHistory();
+  },
+
+  setEdges: (edges: Edge[]) => {
+    set({ edges });
+    get().addToHistory();
+  },
+
+  selectNode: (id: string | null) => set({ selectedNode: id }),
+
+  setZoom: (zoom: number) => set({ zoom }),
+
+  addToHistory: () => {
+    const state = get();
+    const newHistory = state.history.slice(0, state.historyIndex + 1);
+    newHistory.push({ nodes: state.nodes, edges: state.edges });
+
+    // Limit history size
+    if (newHistory.length > 50) {
+      newHistory.shift();
+    }
+
+    set({
+      history: newHistory,
+      historyIndex: newHistory.length - 1,
+    });
+  },
+
+  undo: () => {
+    const state = get();
+    if (state.historyIndex > 0) {
+      const prevState = state.history[state.historyIndex - 1];
+      set({
+        nodes: prevState.nodes,
+        edges: prevState.edges,
+        historyIndex: state.historyIndex - 1,
+      });
+    }
+  },
+
+  redo: () => {
+    const state = get();
+    if (state.historyIndex < state.history.length - 1) {
+      const nextState = state.history[state.historyIndex + 1];
+      set({
+        nodes: nextState.nodes,
+        edges: nextState.edges,
+        historyIndex: state.historyIndex + 1,
+      });
+    }
+  },
+
+  canUndo: () => get().historyIndex > 0,
+
+  canRedo: () => {
+    const state = get();
+    return state.historyIndex < state.history.length - 1;
+  },
+}));
+
+// Canvas action helpers
+export function useCanvasActions() {
+  const store = useCanvasStore();
+
+  return {
+    addNode: (node: Node) => {
+      store.setNodes([...store.nodes, node]);
+    },
+    removeNode: (nodeId: string) => {
+      store.setNodes(store.nodes.filter((n) => n.id !== nodeId));
+    },
+    updateNode: (nodeId: string, updates: Partial<Node>) => {
+      store.setNodes(
+        store.nodes.map((n) =>
+          n.id === nodeId ? { ...n, ...updates } : n
+        )
+      );
+    },
+    addEdge: (edge: Edge) => {
+      store.setEdges([...store.edges, edge]);
+    },
+    removeEdge: (edgeId: string) => {
+      store.setEdges(store.edges.filter((e) => e.id !== edgeId));
+    },
+    clearCanvas: () => {
+      store.setNodes([]);
+      store.setEdges([]);
+    },
+    fitView: () => {
+      // This would typically call React Flow's fitView method
+      console.log('[canvas] fitView called');
+    },
+  };
+}
+===== FILE: src/lib/codeflow/coderag.ts =====
+/**
+ * coderag wrapper
+ * Standalone code retrieval and MCP server for multi-language repositories
+ */
+import type { CodeQuery, CodeResult, CodeIndex, CodeRAG, SearchOptions, SearchResult } from '@/types/coderag';
+
+// Re-export types
+export type { CodeQuery, CodeResult, CodeIndex, SearchOptions, SearchResult };
+
+class CodeRAGImpl implements CodeRAG {
+  private indexes: Map<string, CodeIndex> = new Map();
+  private queryCache: Map<string, CodeResult[]> = new Map();
+  private repository: string = '';
+
+  async initialize(repoPath?: string): Promise<void> {
+    if (repoPath) {
+      this.repository = repoPath;
+      await this.indexRepository(repoPath);
+    }
+    console.log('[coderag] Code RAG initialized');
+  }
+
+  async indexRepository(repoPath: string): Promise<CodeIndex> {
+    // Simulate indexing - real implementation would parse and index files
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const indexInfo: CodeIndex = {
+      repository: repoPath,
+      files: Math.floor(Math.random() * 1000) + 100,
+      lastUpdated: Date.now(),
+      indexSize: Math.floor(Math.random() * 10000) + 1000,
+    };
+
+    this.indexes.set(repoPath, indexInfo);
+    this.repository = repoPath;
+    return indexInfo;
+  }
+
+  async query(request: CodeQuery): Promise<CodeResult[]> {
+    const cacheKey = `${request.query}-${request.language}-${request.maxResults}`;
+    if (this.queryCache.has(cacheKey)) {
+      return this.queryCache.get(cacheKey)!;
+    }
+
+    // Simulate query execution
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const results: CodeResult[] = [
+      {
+        file: 'src/components/Canvas.tsx',
+        content: '// Code matching query: ' + request.query,
+        score: 0.95,
+        lineStart: 10,
+        lineEnd: 20,
+        language: 'typescript',
+        matchedTokens: request.query.split(' '),
+      },
+    ];
+
+    this.queryCache.set(cacheKey, results);
+    return results;
+  }
+
+  async searchByFilename(filename: string): Promise<CodeResult[]> {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    return [
+      {
+        file: filename,
+        content: '// File contents for: ' + filename,
+        score: 1.0,
+        lineStart: 1,
+        lineEnd: 50,
+        language: this.detectLanguage(filename),
+      },
+    ];
+  }
+
+  private detectLanguage(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const langMap: Record<string, string> = {
+      ts: 'typescript',
+      tsx: 'typescript',
+      js: 'javascript',
+      jsx: 'javascript',
+      py: 'python',
+      go: 'go',
+      rs: 'rust',
+      java: 'java',
+      cpp: 'cpp',
+      c: 'c',
+    };
+    return langMap[ext || ''] || 'unknown';
+  }
+
+  getIndexes(): CodeIndex[] {
+    return Array.from(this.indexes.values());
+  }
+
+  clearCache(): void {
+    this.queryCache.clear();
+  }
+}
+
+// Singleton
+let rag: CodeRAG | null = null;
+
+export function getCodeRAG(): CodeRAG {
+  if (!rag) {
+    rag = new CodeRAGImpl();
+  }
+  return rag;
+}
+
+// React hook for code search
+export function useCodeSearch() {
+  const rag = getCodeRAG();
+
+  return {
+    query: (request: CodeQuery) => rag.query(request),
+    searchByFilename: (filename: string) => rag.searchByFilename(filename),
+    indexes: rag.getIndexes(),
+    clearCache: () => rag.clearCache(),
+  };
+}
+
+// Semantic search with embeddings (stub)
+export interface EmbeddingSearch {
+  index(files: string[]): Promise<void>;
+  search(query: string, limit?: number): Promise<CodeResult[]>;
+  findSimilar(code: string, limit?: number): Promise<CodeResult[]>;
+}
+
+export function useEmbeddingSearch(): EmbeddingSearch {
+  return {
+    index: async (_files: string[]) => {
+      console.log('[coderag] Embedding index updated');
+    },
+    search: async (query: string, limit = 10) => {
+      return rag!.query({ query, maxResults: limit });
+    },
+    findSimilar: async (code: string, limit = 10) => {
+      return rag!.query({ query: code, maxResults: limit });
+    },
+  };
+}
+===== FILE: src/lib/codeflow/core.ts =====
+/**
+ * codeflow-core wrapper
+ * Analysis core for blueprint generation, repository analysis, exports, and conflict detection
+ */
+import type {
+  BlueprintNode,
+  AnalysisResult,
+  RepositoryAnalysis,
+  BlueprintSpec,
+  Conflict,
+  Issue,
+} from '@/types/codeflow-core';
+
+// Re-export types
+export type { BlueprintNode, AnalysisResult, RepositoryAnalysis, BlueprintSpec, Conflict };
+
+// Analysis helpers using npm package directly
+export async function analyzeRepository(path: string): Promise<RepositoryAnalysis> {
+  try {
+    const codeflowCore = await import('@abhinav2203/codeflow-core');
+    const result = await codeflowCore.analyzeRepo(path) as unknown as Record<string, unknown>;
+    // Transform to our interface
+    return {
+      path,
+      files: (result.fileCount as number) || (result.files as number) || 0,
+      totalLines: (result.lines as number) || (result.totalLines as number) || 0,
+      languageBreakdown: (result.languages as Record<string, number>) || (result.languageBreakdown as Record<string, number>) || {},
+      issues: (result.issues as Issue[]) || [],
+      timestamp: Date.now(),
+    };
+  } catch {
+    // Fall back to local implementation
+    return {
+      path,
+      files: 0,
+      totalLines: 0,
+      languageBreakdown: {},
+      issues: [],
+      timestamp: Date.now(),
+    };
+  }
+}
+
+export async function analyzeTypeScriptRepo(path: string): Promise<RepositoryAnalysis> {
+  try {
+    const codeflowCore = await import('@abhinav2203/codeflow-core');
+    const result = await codeflowCore.analyzeTypeScriptRepo(path) as unknown as Record<string, unknown>;
+    // Transform to our interface
+    return {
+      path,
+      files: (result.fileCount as number) || (result.files as number) || 0,
+      totalLines: (result.lines as number) || (result.totalLines as number) || 0,
+      languageBreakdown: (result.languages as Record<string, number>) || (result.languageBreakdown as Record<string, number>) || {},
+      issues: (result.issues as Issue[]) || [],
+      timestamp: Date.now(),
+    };
+  } catch {
+    return {
+      path,
+      files: 0,
+      totalLines: 0,
+      languageBreakdown: {},
+      issues: [],
+      timestamp: Date.now(),
+    };
+  }
+}
+
+export async function generateBlueprint(spec: BlueprintSpec): Promise<BlueprintNode[]> {
+  try {
+    const codeflowCore = await import('@abhinav2203/codeflow-core');
+    // Transform to npm package's expected format
+    const result = await codeflowCore.buildBlueprintGraph({
+      projectName: spec.name,
+      mode: (spec.options?.targetLanguage as 'essential' | 'yolo') || 'essential',
+      repoPath: '',
+      prdText: spec.description,
+    });
+    // Result is an object with nodes array inside
+    if (Array.isArray(result)) return result;
+    return (result as Record<string, unknown>).nodes as BlueprintNode[] || spec.nodes || [];
+  } catch {
+    return spec.nodes || [];
+  }
+}
+
+export async function detectConflicts(projectPath: string): Promise<Conflict[]> {
+  // Always return empty array - the npm package requires proper graph structure
+  return [];
+}
+
+export async function exportBlueprint(
+  nodes: BlueprintNode[],
+  format: 'json' | 'yaml' | 'markdown' = 'json'
+): Promise<string> {
+  // Always use local implementation - the npm package requires project metadata
+  if (format === 'json') return JSON.stringify(nodes, null, 2);
+  if (format === 'markdown') {
+    return nodes.map(n => `## ${n.label}\n${n.description || ''}`).join('\n\n');
+  }
+  return JSON.stringify(nodes);
+}
+===== FILE: src/lib/codeflow/dtwin.ts =====
+/**
+ * codeflow-dtwin wrapper
+ * Digital twin simulation engine with active nodes and snapshot tooling
+ */
+import type { TwinSnapshot, TwinNode, TwinState, TwinConnection, DigitalTwinEngine } from '@/types/codeflow-dtwin';
+
+// Re-export types
+export type { TwinSnapshot, TwinNode, TwinState, TwinConnection };
+
+class DigitalTwinEngineImpl implements DigitalTwinEngine {
+  private nodes: Map<string, TwinNode> = new Map();
+  private connections: Map<string, TwinConnection> = new Map();
+  private snapshots: TwinSnapshot[] = [];
+  private syncing: boolean = false;
+  private updateListeners: ((event: any) => void)[] = [];
+
+  async initialize(): Promise<void> {
+    console.log('[codeflow-dtwin] Digital twin engine initialized');
+  }
+
+  addNode(node: Omit<TwinNode, 'id'>): TwinNode {
+    const id = `twin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newNode: TwinNode = { ...node, id };
+    this.nodes.set(id, newNode);
+    this.emitUpdate({ type: 'node_added', nodeId: id, timestamp: Date.now() });
+    return newNode;
+  }
+
+  removeNode(id: string): void {
+    if (this.nodes.has(id)) {
+      this.nodes.delete(id);
+      // Remove related connections
+      for (const [connId, conn] of this.connections) {
+        if (conn.sourceId === id || conn.targetId === id) {
+          this.connections.delete(connId);
+        }
+      }
+      this.emitUpdate({ type: 'node_removed', nodeId: id, timestamp: Date.now() });
+    }
+  }
+
+  updateNodeState(id: string, state: Record<string, any>): void {
+    const node = this.nodes.get(id);
+    if (node) {
+      node.state = { ...node.state, ...state };
+      this.emitUpdate({ type: 'state_updated', nodeId: id, timestamp: Date.now() });
+    }
+  }
+
+  getNode(id: string): TwinNode | undefined {
+    return this.nodes.get(id);
+  }
+
+  getAllNodes(): TwinNode[] {
+    return Array.from(this.nodes.values());
+  }
+
+  createSnapshot(label?: string): TwinSnapshot {
+    const snapshot: TwinSnapshot = {
+      id: `snapshot-${Date.now()}`,
+      timestamp: Date.now(),
+      state: this.captureState(),
+      label,
+    };
+    this.snapshots.push(snapshot);
+    this.emitUpdate({ type: 'snapshot_created', snapshotId: snapshot.id, timestamp: Date.now() });
+    return snapshot;
+  }
+
+  restoreSnapshot(snapshotId: string): void {
+    const snapshot = this.snapshots.find((s) => s.id === snapshotId);
+    if (snapshot) {
+      this.restoreState(snapshot.state);
+      this.emitUpdate({ type: 'snapshot_restored', snapshotId, timestamp: Date.now() });
+    }
+  }
+
+  getSnapshots(): TwinSnapshot[] {
+    return [...this.snapshots];
+  }
+
+  deleteSnapshot(snapshotId: string): void {
+    this.snapshots = this.snapshots.filter((s) => s.id !== snapshotId);
+  }
+
+  async sync(): Promise<void> {
+    this.syncing = true;
+    this.emitUpdate({ type: 'sync_started', timestamp: Date.now() });
+
+    // Simulate sync delay
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    this.syncing = false;
+    this.emitUpdate({ type: 'sync_completed', timestamp: Date.now() });
+  }
+
+  isSyncing(): boolean {
+    return this.syncing;
+  }
+
+  connect(sourceId: string, targetId: string, type: 'data' | 'control' = 'data'): TwinConnection {
+    const id = `conn-${Date.now()}`;
+    const connection: TwinConnection = {
+      id,
+      sourceId,
+      targetId,
+      type,
+      weight: 1.0,
+    };
+    this.connections.set(id, connection);
+
+    // Update node connections
+    const source = this.nodes.get(sourceId);
+    if (source) {
+      source.connections.push(id);
+    }
+
+    return connection;
+  }
+
+  disconnect(connectionId: string): void {
+    const conn = this.connections.get(connectionId);
+    if (conn) {
+      // Remove from source node
+      const source = this.nodes.get(conn.sourceId);
+      if (source) {
+        source.connections = source.connections.filter((id) => id !== connectionId);
+      }
+      this.connections.delete(connectionId);
+    }
+  }
+
+  getConnections(): TwinConnection[] {
+    return Array.from(this.connections.values());
+  }
+
+  onUpdate(callback: (event: any) => void): () => void {
+    this.updateListeners.push(callback);
+    return () => {
+      this.updateListeners = this.updateListeners.filter((cb) => cb !== callback);
+    };
+  }
+
+  private captureState(): TwinState {
+    return {
+      nodes: this.getAllNodes(),
+      connections: this.getConnections(),
+      variables: {},
+      timestamp: Date.now(),
+    };
+  }
+
+  private restoreState(state: TwinState): void {
+    this.nodes.clear();
+    this.connections.clear();
+
+    for (const node of state.nodes) {
+      this.nodes.set(node.id, node);
+    }
+    for (const conn of state.connections) {
+      this.connections.set(conn.id, conn);
+    }
+  }
+
+  private emitUpdate(event: any): void {
+    for (const listener of this.updateListeners) {
+      listener(event);
+    }
+  }
+}
+
+// Singleton
+let dtwin: DigitalTwinEngine | null = null;
+
+export function getDigitalTwin(): DigitalTwinEngine {
+  if (!dtwin) {
+    dtwin = new DigitalTwinEngineImpl();
+  }
+  return dtwin;
+}
+
+// React hook for digital twin
+export function useDigitalTwin() {
+  const engine = getDigitalTwin();
+
+  return {
+    nodes: engine.getAllNodes(),
+    connections: engine.getConnections(),
+    snapshots: engine.getSnapshots(),
+    isSyncing: engine.isSyncing(),
+    addNode: engine.addNode.bind(engine),
+    removeNode: engine.removeNode.bind(engine),
+    updateNodeState: engine.updateNodeState.bind(engine),
+    createSnapshot: engine.createSnapshot.bind(engine),
+    restoreSnapshot: engine.restoreSnapshot.bind(engine),
+    sync: () => engine.sync(),
+    connect: engine.connect.bind(engine),
+    disconnect: engine.disconnect.bind(engine),
+  };
+}
+===== FILE: src/lib/codeflow/evolution.ts =====
+/**
+ * codeflow-evolution wrapper
+ * Genetic algorithm for architecture evolution with AI-powered ghost nodes
+ */
+import type {
+  GhostNode,
+  Genotype,
+  EvolutionConfig,
+  EvolutionResult,
+  EvolutionHistoryEntry,
+  EvolutionEngine,
+  DiversityMetrics,
+} from '@/types/codeflow-evolution';
+
+// Re-export types
+export type { GhostNode, Genotype, EvolutionConfig, EvolutionResult, EvolutionHistoryEntry, DiversityMetrics };
+
+class EvolutionEngineImpl implements EvolutionEngine {
+  private population: GhostNode[] = [];
+  private config: EvolutionConfig = {
+    populationSize: 20,
+    mutationRate: 0.1,
+    crossoverRate: 0.7,
+    generations: 100,
+  };
+  private generation: number = 0;
+  private history: EvolutionHistoryEntry[] = [];
+  private running: boolean = false;
+  private fitnessFunction: ((node: GhostNode) => number) | undefined;
+  private updateListeners: ((event: any) => void)[] = [];
+
+  async initialize(config?: Partial<EvolutionConfig>): Promise<void> {
+    if (config) {
+      this.config = { ...this.config, ...config };
+    }
+    if (this.config.fitnessFunction) {
+      this.fitnessFunction = this.config.fitnessFunction;
+    }
+    this.population = this.initializePopulation();
+    console.log('[codeflow-evolution] Evolution engine initialized with config:', this.config);
+  }
+
+  private initializePopulation(): GhostNode[] {
+    const population: GhostNode[] = [];
+    for (let i = 0; i < this.config.populationSize; i++) {
+      population.push(this.createRandomNode());
+    }
+    return population;
+  }
+
+  private createRandomNode(parentIds: string[] = []): GhostNode {
+    return {
+      id: `ghost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      genotype: this.generateRandomGenotype(),
+      fitness: 0,
+      generation: this.generation,
+      parentIds,
+      createdAt: Date.now(),
+    };
+  }
+
+  private generateRandomGenotype(): Genotype {
+    return {
+      structure: {
+        nodes: Math.floor(Math.random() * 10) + 3,
+        layers: Math.floor(Math.random() * 4) + 1,
+        connections: Math.floor(Math.random() * 15) + 5,
+      },
+      parameters: {
+        learningRate: Math.random() * 0.3 + 0.01,
+        threshold: Math.random() * 0.5 + 0.5,
+        mutationStrength: 0.1,
+      },
+      encoding: btoa(JSON.stringify({ timestamp: Date.now() })),
+    };
+  }
+
+  private defaultFitnessFunction(node: GhostNode): number {
+    // Heuristic-based fitness
+    const structureScore = node.genotype.structure.nodes / 10;
+    const parameterScore = node.genotype.parameters.learningRate;
+    const diversityBonus = Math.random() * 0.1; // Simulate diversity
+    return Math.min(1, (structureScore + parameterScore) / 2 + diversityBonus);
+  }
+
+  async evolve(): Promise<EvolutionResult> {
+    this.running = true;
+    const startTime = Date.now();
+    const bestFitnessHistory: number[] = [];
+
+    for (let gen = 0; gen < this.config.generations && this.running; gen++) {
+      this.generation = gen;
+
+      // Evaluate fitness for all nodes
+      await this.evaluatePopulation();
+
+      // Record history
+      const bestFitness = Math.max(...this.population.map((n) => n.fitness));
+      const avgFitness = this.population.reduce((sum, n) => sum + n.fitness, 0) / this.population.length;
+      const worstFitness = Math.min(...this.population.map((n) => n.fitness));
+
+      bestFitnessHistory.push(bestFitness);
+      this.history.push({
+        generation: gen,
+        bestFitness,
+        averageFitness: avgFitness,
+        worstFitness,
+        bestNodeId: this.population.find((n) => n.fitness === bestFitness)?.id || '',
+        diversity: this.calculateDiversity(),
+      });
+
+      // Selection
+      await this.selection();
+
+      // Crossover
+      await this.crossover();
+
+      // Mutation
+      await this.mutation();
+
+      // Emit progress
+      this.emitUpdate({
+        type: 'generation_complete',
+        generation: gen,
+        bestFitness,
+      });
+    }
+
+    this.running = false;
+
+    const bestNode = this.population.reduce((best, node) =>
+      node.fitness > best.fitness ? node : best
+    );
+
+    return {
+      bestNode,
+      finalPopulation: this.population,
+      history: this.history,
+      duration: Date.now() - startTime,
+      success: bestFitnessHistory.length > 0,
+    };
+  }
+
+  private async evaluatePopulation(): Promise<void> {
+    for (const node of this.population) {
+      node.fitness = this.fitnessFunction
+        ? this.fitnessFunction(node)
+        : this.defaultFitnessFunction(node);
+    }
+    this.population.sort((a, b) => b.fitness - a.fitness);
+  }
+
+  private async selection(): Promise<void> {
+    // Elitism: keep top performers
+    const eliteCount = Math.floor(this.config.populationSize * 0.1);
+    const selectedCount = Math.floor(this.config.populationSize / 2);
+    this.population = this.population.slice(0, Math.max(selectedCount, eliteCount));
+  }
+
+  private async crossover(): Promise<void> {
+    const newPopulation = [...this.population];
+
+    while (newPopulation.length < this.config.populationSize) {
+      const parent1 = this.selectParent();
+      const parent2 = this.selectParent();
+
+      if (Math.random() < this.config.crossoverRate) {
+        const child = this.crossoverNodes(parent1, parent2);
+        newPopulation.push(child);
+      } else {
+        newPopulation.push(this.createRandomNode([parent1.id, parent2.id]));
+      }
+    }
+
+    this.population = newPopulation;
+  }
+
+  private selectParent(): GhostNode {
+    // Tournament selection
+    const tournamentSize = 3;
+    const tournament: GhostNode[] = [];
+    for (let i = 0; i < tournamentSize; i++) {
+      const idx = Math.floor(Math.random() * this.population.length);
+      tournament.push(this.population[idx]);
+    }
+    return tournament.reduce((best, node) =>
+      node.fitness > best.fitness ? node : best
+    );
+  }
+
+  private crossoverNodes(parent1: GhostNode, parent2: GhostNode): GhostNode {
+    return {
+      id: `ghost-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      genotype: {
+        structure: Math.random() > 0.5 ? parent1.genotype.structure : parent2.genotype.structure,
+        parameters: Math.random() > 0.5 ? parent1.genotype.parameters : parent2.genotype.parameters,
+        encoding: '', // Will be regenerated
+      },
+      fitness: 0,
+      generation: this.generation + 1,
+      parentIds: [parent1.id, parent2.id],
+      createdAt: Date.now(),
+    };
+  }
+
+  private async mutation(): Promise<void> {
+    for (const node of this.population) {
+      if (Math.random() < this.config.mutationRate) {
+        node.genotype = this.mutateGenotype(node.genotype);
+      }
+    }
+  }
+
+  private mutateGenotype(genotype: Genotype): Genotype {
+    return {
+      structure: { ...genotype.structure },
+      parameters: {
+        ...genotype.parameters,
+        learningRate: Math.max(0.01, Math.min(1, genotype.parameters.learningRate * (1 + (Math.random() - 0.5) * 0.2))),
+        threshold: Math.max(0.1, Math.min(1, genotype.parameters.threshold * (1 + (Math.random() - 0.5) * 0.1))),
+      },
+      encoding: btoa(JSON.stringify({ timestamp: Date.now() })),
+    };
+  }
+
+  private calculateDiversity(): number {
+    if (this.population.length < 2) return 0;
+    const fitnessValues = this.population.map((n) => n.fitness);
+    const avg = fitnessValues.reduce((a, b) => a + b, 0) / fitnessValues.length;
+    const variance = fitnessValues.reduce((sum, f) => sum + Math.pow(f - avg, 2), 0) / fitnessValues.length;
+    return Math.sqrt(variance);
+  }
+
+  stop(): void {
+    this.running = false;
+  }
+
+  getPopulation(): GhostNode[] {
+    return [...this.population];
+  }
+
+  getGeneration(): number {
+    return this.generation;
+  }
+
+  getBestNode(): GhostNode | undefined {
+    return this.population[0];
+  }
+
+  getHistory(): EvolutionHistoryEntry[] {
+    return [...this.history];
+  }
+
+  getConfig(): EvolutionConfig {
+    return { ...this.config };
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  addToPopulation(node: GhostNode): void {
+    this.population.push(node);
+  }
+
+  removeFromPopulation(nodeId: string): void {
+    this.population = this.population.filter((n) => n.id !== nodeId);
+  }
+
+  onUpdate(callback: (event: any) => void): () => void {
+    this.updateListeners.push(callback);
+    return () => {
+      this.updateListeners = this.updateListeners.filter((cb) => cb !== callback);
+    };
+  }
+
+  private emitUpdate(event: any): void {
+    for (const listener of this.updateListeners) {
+      listener(event);
+    }
+  }
+}
+
+// Singleton
+let evolution: EvolutionEngine | null = null;
+
+export function getEvolutionEngine(): EvolutionEngine {
+  if (!evolution) {
+    evolution = new EvolutionEngineImpl();
+  }
+  return evolution;
+}
+
+// React hook for evolution
+export function useEvolution() {
+  const engine = getEvolutionEngine();
+
+  return {
+    population: engine.getPopulation(),
+    generation: engine.getGeneration(),
+    bestNode: engine.getBestNode(),
+    history: engine.getHistory(),
+    isRunning: engine.isRunning(),
+    evolve: () => engine.evolve(),
+    stop: () => engine.stop(),
+  };
+}
+===== FILE: src/lib/codeflow/execution.ts =====
+/**
+ * codeflow-execution wrapper
+ * Runtime execution engine for CodeFlow blueprint graphs
+ */
+import type {
+  ExecutionResult,
+  WorkspaceConfig,
+  ExecutionEngine,
+  TestCase,
+  TestResult,
+} from '@/types/codeflow-execution';
+
+// Re-export types
+export type { ExecutionResult, WorkspaceConfig, TestCase, TestResult };
+
+class ExecutionEngineImpl implements ExecutionEngine {
+  private workspace: WorkspaceConfig = { timeout: 30000, isolated: true };
+  private initialized: boolean = false;
+
+  async initialize(config?: Partial<WorkspaceConfig>): Promise<void> {
+    if (config) {
+      this.workspace = { ...this.workspace, ...config };
+    }
+    this.initialized = true;
+    console.log('[codeflow-execution] Engine initialized with config:', this.workspace);
+  }
+
+  async execute(code: string, context?: any): Promise<ExecutionResult> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+    const start = Date.now();
+    try {
+      // In a real implementation, this would execute code in an isolated workspace
+      // For now, simulate execution
+      const result = await simulateExecution(code, context);
+      return {
+        success: true,
+        output: result,
+        duration: Date.now() - start,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: error.message,
+        duration: Date.now() - start,
+      };
+    }
+  }
+
+  async validate(code: string): Promise<{ valid: boolean; errors: string[] }> {
+    const errors: string[] = [];
+
+    // Basic validation
+    if (!code || code.trim().length === 0) {
+      errors.push('Code cannot be empty');
+    }
+
+    // Check for syntax errors (simplified)
+    const bracketCount = (code.match(/\{/g) || []).length - (code.match(/\}/g) || []).length;
+    if (bracketCount !== 0) {
+      errors.push('Unmatched brackets');
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  }
+
+  async test(code: string, testCases: TestCase[]): Promise<TestResult[]> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+    const results: TestResult[] = [];
+
+    for (const testCase of testCases) {
+      const start = Date.now();
+      try {
+        const actual = await this.execute(code, testCase.input);
+        const passed = JSON.stringify(actual.output) === JSON.stringify(testCase.expected);
+        results.push({
+          input: testCase.input,
+          expected: testCase.expected,
+          actual: actual.output,
+          passed,
+          duration: Date.now() - start,
+        });
+      } catch (error: any) {
+        results.push({
+          input: testCase.input,
+          expected: testCase.expected,
+          actual: undefined,
+          passed: false,
+          duration: Date.now() - start,
+          error: error.message,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  getConfig(): WorkspaceConfig {
+    return { ...this.workspace };
+  }
+}
+
+async function simulateExecution(code: string, context?: any): Promise<string> {
+  // Simulate some processing time
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // For demo purposes, return a formatted output
+  if (code.includes('console.log')) {
+    const matches = code.match(/console\.log\(['"](.*?)['"]\)/);
+    return matches ? matches[1] : 'Code executed successfully';
+  }
+
+  return `Executed ${code.split('\n').length} lines`;
+}
+
+// Singleton
+let runtime: ExecutionEngine | null = null;
+
+export function getExecutionRuntime(): ExecutionEngine {
+  if (!runtime) {
+    runtime = new ExecutionEngineImpl();
+  }
+  return runtime;
+}
+
+// Convenience functions
+export async function executeCode(code: string, context?: any): Promise<ExecutionResult> {
+  const engine = getExecutionRuntime();
+  return engine.execute(code, context);
+}
+
+export async function validateCode(code: string): Promise<{ valid: boolean; errors: string[] }> {
+  const engine = getExecutionRuntime();
+  return engine.validate(code);
+}
+
+export async function runTests(code: string, testCases: TestCase[]): Promise<TestResult[]> {
+  const engine = getExecutionRuntime();
+  return engine.test(code, testCases);
+}
+===== FILE: src/lib/codeflow/index.ts =====
+/**
+ * Codeflow package exports
+ * Unified access to all 12 codeflow packages
+ */
+
+// Core exports
+export {
+  analyzeRepository,
+  generateBlueprint,
+  detectConflicts,
+  exportBlueprint,
+} from './core';
+
+// Store exports
+export {
+  useSessionStore,
+  getSessionStorage,
+  createProjectStore,
+} from './store';
+export type { Checkpoint, PendingApproval, ApprovedItem } from './store';
+
+// MCP exports
+export { getMCPServer, createMCPClient } from './mcp';
+export type { ToolDefinition, MCPServerConfig, MCPServer, MCPMessage } from './mcp';
+
+// Execution exports
+export {
+  getExecutionRuntime,
+  executeCode,
+  validateCode,
+  runTests,
+} from './execution';
+export type { ExecutionResult, WorkspaceConfig, TestCase, TestResult } from './execution';
+
+// Digital Twin exports
+export { getDigitalTwin, useDigitalTwin } from './dtwin';
+export type { TwinSnapshot, TwinNode, TwinState, TwinConnection } from './dtwin';
+
+// Evolution exports
+export { getEvolutionEngine, useEvolution } from './evolution';
+export type {
+  GhostNode,
+  Genotype,
+  EvolutionConfig,
+  EvolutionResult,
+  EvolutionHistoryEntry,
+  DiversityMetrics,
+} from './evolution';
+
+// Versioning exports
+export { getVersioning, useGitOperations } from './versioning';
+export type { VersionInfo, DiffResult, Branch, Commit } from './versioning';
+
+// PRD exports
+export { getPRDProcessor, usePRD } from './prd';
+export type { PRDDocument, PRDSection, Requirement, PRDParseOptions } from './prd';
+
+// Analysis exports
+export { getAnalysisEngine, useAnalysis } from './analysis';
+export type {
+  AnalysisReport,
+  AnalysisIssue,
+  CodeMetrics,
+  AnalysisConfig,
+  ComplexityBreakdown,
+  Suggestion,
+} from './analysis';
+
+// Agent exports
+export { getAgentOrchestrator, useAgentOrchestrator, TaskQueue } from './agent';
+export type {
+  AgentTask,
+  AgentConfig,
+  AgentStatus,
+  AgentEvent,
+  TaskResult,
+} from './agent';
+
+// CodeRAG exports
+export { getCodeRAG, useCodeSearch, useEmbeddingSearch } from './coderag';
+export type { CodeQuery, CodeResult, CodeIndex, SearchOptions, SearchResult } from './coderag';
+
+// Canvas exports
+export {
+  useCanvasStore,
+  useCanvasActions,
+} from './canvas';
+export type {
+  CanvasConfig,
+  NodeData,
+  EdgeData,
+  CanvasState,
+  CanvasEventHandlers,
+  MiniMapConfig,
+  ControlsConfig,
+} from './canvas';
+
+// Re-export types index
+export * from '@/types';
+===== FILE: src/lib/codeflow/mcp.ts =====
+/**
+ * codeflow-mcp wrapper
+ * MCP server configuration and tool registry for CodeFlow blueprint operations
+ */
+import type { ToolDefinition, MCPServerConfig, MCPServer, MCPMessage } from '@/types/codeflow-mcp';
+
+// Re-export types
+export type { ToolDefinition, MCPServerConfig, MCPServer, MCPMessage };
+
+// Tool registry implementation
+class MCPServerImpl implements MCPServer {
+  private tools: Map<string, ToolDefinition> = new Map();
+  private registeredAgents: string[] = [];
+  private permissions: MCPServerConfig['permissions'];
+
+  registerTool(tool: ToolDefinition): void {
+    this.tools.set(tool.name, tool);
+    console.log(`[codeflow-mcp] Tool registered: ${tool.name}`);
+  }
+
+  unregisterTool(name: string): void {
+    this.tools.delete(name);
+    console.log(`[codeflow-mcp] Tool unregistered: ${name}`);
+  }
+
+  getTool(name: string): ToolDefinition | undefined {
+    return this.tools.get(name);
+  }
+
+  listTools(): ToolDefinition[] {
+    return Array.from(this.tools.values());
+  }
+
+  async executeTool(name: string, args: any[]): Promise<any> {
+    const tool = this.tools.get(name);
+    if (!tool) {
+      throw new Error(`Tool not found: ${name}`);
+    }
+    try {
+      return await tool.handler(...args);
+    } catch (error: any) {
+      console.error(`[codeflow-mcp] Tool execution error: ${name}`, error);
+      throw error;
+    }
+  }
+
+  registerAgent(agentId: string): void {
+    if (!this.registeredAgents.includes(agentId)) {
+      this.registeredAgents.push(agentId);
+      console.log(`[codeflow-mcp] Agent registered: ${agentId}`);
+    }
+  }
+
+  unregisterAgent(agentId: string): void {
+    this.registeredAgents = this.registeredAgents.filter((id) => id !== agentId);
+  }
+
+  getConfig(): MCPServerConfig {
+    return {
+      tools: this.tools,
+      registeredAgents: this.registeredAgents,
+      permissions: this.permissions,
+    };
+  }
+
+  setPermissions(permissions: MCPServerConfig['permissions']): void {
+    this.permissions = permissions;
+  }
+}
+
+// Singleton instance
+let mcpServer: MCPServer | null = null;
+
+export function getMCPServer(): MCPServer {
+  if (!mcpServer) {
+    mcpServer = new MCPServerImpl();
+    // Register built-in tools
+    initializeBuiltInTools(mcpServer);
+  }
+  return mcpServer;
+}
+
+function initializeBuiltInTools(server: MCPServer): void {
+  server.registerTool({
+    name: 'codeflow_analyze',
+    description: 'Analyze repository structure and generate metrics',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Path to repository' },
+      },
+      required: ['path'],
+    },
+    handler: async (args: { path: string }) => {
+      const { analyzeRepository } = await import('./core');
+      return analyzeRepository(args.path);
+    },
+  });
+
+  server.registerTool({
+    name: 'codeflow_blueprint',
+    description: 'Generate code blueprint from specification',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spec: { type: 'object', description: 'Blueprint specification' },
+      },
+      required: ['spec'],
+    },
+    handler: async (args: { spec: any }) => {
+      const { generateBlueprint } = await import('./core');
+      return generateBlueprint(args.spec);
+    },
+  });
+
+  server.registerTool({
+    name: 'codeflow_checkpoint',
+    description: 'Create session checkpoint',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        data: { type: 'object', description: 'Checkpoint data' },
+        label: { type: 'string', description: 'Optional label' },
+      },
+      required: ['data'],
+    },
+    handler: async (args: { data: any; label?: string }) => {
+      const { useSessionStore } = await import('./store');
+      useSessionStore.getState().addCheckpoint(args.data, args.label);
+      return { success: true, checkpointId: `cp-${Date.now()}` };
+    },
+  });
+
+  server.registerTool({
+    name: 'codeflow_export',
+    description: 'Export blueprint to various formats',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        nodes: { type: 'array', description: 'Blueprint nodes' },
+        format: { type: 'string', enum: ['json', 'yaml', 'markdown'] },
+      },
+      required: ['nodes', 'format'],
+    },
+    handler: async (args: { nodes: any[]; format: 'json' | 'yaml' | 'markdown' }) => {
+      const { exportBlueprint } = await import('./core');
+      return exportBlueprint(args.nodes, args.format);
+    },
+  });
+}
+
+// MCP client for connecting to external servers
+export interface MCPClient {
+  connect(url: string, apiKey?: string): Promise<void>;
+  disconnect(): void;
+  send(message: MCPMessage): Promise<MCPMessage>;
+  isConnected(): boolean;
+}
+
+export async function createMCPClient(config: { serverUrl: string; apiKey?: string }): Promise<MCPClient> {
+  // Stub implementation - real implementation would use WebSocket
+  return {
+    isConnected: () => false,
+    connect: async () => {},
+    disconnect: () => {},
+    send: async () => ({ type: 'response', id: '', result: {} }),
+  };
+}
+===== FILE: src/lib/codeflow/prd.ts =====
+/**
+ * codeflow-prd wrapper
+ * PRD processing and requirements management
+ */
+import type {
+  PRDDocument,
+  PRDSection,
+  Requirement,
+  PRDProcessor,
+  PRDParseOptions,
+} from '@/types/codeflow-prd';
+
+// Re-export types
+export type { PRDDocument, PRDSection, Requirement, PRDParseOptions };
+
+class PRDProcessorImpl implements PRDProcessor {
+  private documents: Map<string, PRDDocument> = new Map();
+  private currentDoc: string | null = null;
+
+  async initialize(): Promise<void> {
+    console.log('[codeflow-prd] PRD processor initialized');
+  }
+
+  createDocument(title: string, content: string): PRDDocument {
+    const doc: PRDDocument = {
+      id: `prd-${Date.now()}`,
+      title,
+      content,
+      status: 'draft',
+      sections: this.parseContent(content),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    this.documents.set(doc.id, doc);
+    this.currentDoc = doc.id;
+    return doc;
+  }
+
+  private parseContent(content: string): PRDSection[] {
+    const sections: PRDSection[] = [];
+    const lines = content.split('\n');
+
+    lines.forEach((line, i) => {
+      if (line.startsWith('## ')) {
+        sections.push({
+          id: `section-${i}`,
+          type: 'goal',
+          content: line.replace('## ', '').trim(),
+        });
+      } else if (line.startsWith('### ')) {
+        sections.push({
+          id: `section-${i}`,
+          type: 'requirement',
+          content: line.replace('### ', '').trim(),
+          priority: 'medium',
+        });
+      } else if (line.startsWith('- ')) {
+        const prevSection = sections[sections.length - 1];
+        if (prevSection) {
+          // Extend previous section
+          prevSection.content += '\n' + line.replace('- ', '').trim();
+        }
+      }
+    });
+
+    return sections;
+  }
+
+  async processDocument(docId: string): Promise<PRDDocument> {
+    const doc = this.documents.get(docId);
+    if (!doc) {
+      throw new Error(`Document not found: ${docId}`);
+    }
+
+    doc.status = 'processing';
+    doc.updatedAt = Date.now();
+
+    // Simulate processing
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    doc.status = 'complete';
+    doc.updatedAt = Date.now();
+
+    return doc;
+  }
+
+  getDocument(docId: string): PRDDocument | undefined {
+    return this.documents.get(docId);
+  }
+
+  getCurrentDocument(): PRDDocument | undefined {
+    return this.currentDoc ? this.documents.get(this.currentDoc) : undefined;
+  }
+
+  listDocuments(): PRDDocument[] {
+    return Array.from(this.documents.values());
+  }
+
+  extractRequirements(docId: string): Requirement[] {
+    const doc = this.documents.get(docId);
+    if (!doc) return [];
+
+    return doc.sections
+      .filter((s) => s.type === 'requirement')
+      .map((s, i) => ({
+        id: `req-${docId}-${i}`,
+        description: s.content,
+        status: 'open' as const,
+        relatedSections: [s.id],
+        priority: s.priority,
+      }));
+  }
+
+  updateRequirement(_reqId: string, _updates: Partial<Requirement>): void {
+    // Implementation for updating requirements
+  }
+
+  archiveDocument(docId: string): void {
+    const doc = this.documents.get(docId);
+    if (doc) {
+      doc.status = 'archived';
+      doc.updatedAt = Date.now();
+    }
+  }
+}
+
+// Singleton
+let prd: PRDProcessor | null = null;
+
+export function getPRDProcessor(): PRDProcessor {
+  if (!prd) {
+    prd = new PRDProcessorImpl();
+  }
+  return prd;
+}
+
+// React hook for PRD
+export function usePRD() {
+  const processor = getPRDProcessor();
+
+  return {
+    documents: processor.listDocuments(),
+    currentDocument: processor.getCurrentDocument(),
+    createDocument: (title: string, content: string) => processor.createDocument(title, content),
+    processDocument: (docId: string) => processor.processDocument(docId),
+    getDocument: (docId: string) => processor.getDocument(docId),
+    extractRequirements: (docId: string) => processor.extractRequirements(docId),
+  };
+}
+===== FILE: src/lib/codeflow/store.ts =====
+/**
+ * codeflow-store wrapper
+ * Local session storage, project-scoped state, checkpointing, approvals
+ */
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Checkpoint, SessionStore, PendingApproval, ApprovedItem } from '@/types/codeflow-store';
+
+// Re-export types
+export type { Checkpoint, PendingApproval, ApprovedItem };
+
+interface SessionState {
+  checkpoints: Checkpoint[];
+  pendingApprovals: PendingApproval[];
+  approvedItems: ApprovedItem[];
+  addCheckpoint: (data: any, label?: string) => string;
+  approveItem: (id: string) => void;
+  rejectItem: (id: string) => void;
+  getCheckpoint: (id: string) => Checkpoint | undefined;
+  getCheckpointsByTag: (tag: string) => Checkpoint[];
+  clearCheckpoints: () => void;
+  clearAll: () => void;
+}
+
+export const useSessionStore = create<SessionState>()(
+  persist(
+    (set, get) => ({
+      checkpoints: [],
+      pendingApprovals: [],
+      approvedItems: [],
+
+      addCheckpoint: (data: any, label?: string) => {
+        const id = `cp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const checkpoint: Checkpoint = {
+          id,
+          timestamp: Date.now(),
+          data,
+          label,
+        };
+        set((state) => ({
+          checkpoints: [...state.checkpoints, checkpoint],
+        }));
+        return id;
+      },
+
+      approveItem: (id: string) => {
+        const state = get();
+        const item = state.pendingApprovals.find((p) => p.id === id);
+        if (item) {
+          set((state) => ({
+            approvedItems: [
+              ...state.approvedItems,
+              {
+                id: item.id,
+                type: item.type,
+                content: item.content,
+                approvedAt: Date.now(),
+              },
+            ],
+            pendingApprovals: state.pendingApprovals.filter((p) => p.id !== id),
+          }));
+        }
+      },
+
+      rejectItem: (id: string) => {
+        set((state) => ({
+          pendingApprovals: state.pendingApprovals.filter((p) => p.id !== id),
+        }));
+      },
+
+      getCheckpoint: (id: string) => {
+        return get().checkpoints.find((cp) => cp.id === id);
+      },
+
+      getCheckpointsByTag: (tag: string) => {
+        return get().checkpoints.filter((cp) => cp.metadata?.tags?.includes(tag));
+      },
+
+      clearCheckpoints: () => {
+        set({ checkpoints: [] });
+      },
+
+      clearAll: () => {
+        set({
+          checkpoints: [],
+          pendingApprovals: [],
+          approvedItems: [],
+        });
+      },
+    }),
+    {
+      name: 'codeflow-session',
+    }
+  )
+);
+
+// Additional utilities
+export function getSessionStorage() {
+  return {
+    save: (key: string, value: any) => {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(key, JSON.stringify(value));
+      }
+    },
+    load: (key: string) => {
+      if (typeof window !== 'undefined') {
+        const item = sessionStorage.getItem(key);
+        return item ? JSON.parse(item) : null;
+      }
+      return null;
+    },
+    remove: (key: string) => {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(key);
+      }
+    },
+  };
+}
+
+// Project-scoped storage
+export function createProjectStore(projectId: string) {
+  return create<SessionState>()(
+    persist(
+      (set, get) => ({
+        checkpoints: [],
+        pendingApprovals: [],
+        approvedItems: [],
+
+        addCheckpoint: (data: any, label?: string) => {
+          const id = `cp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const checkpoint: Checkpoint = {
+            id,
+            timestamp: Date.now(),
+            data,
+            label,
+            metadata: { projectId },
+          };
+          set((state) => ({
+            checkpoints: [...state.checkpoints, checkpoint],
+          }));
+          return id;
+        },
+
+        approveItem: (id: string) => {
+          const state = get();
+          const item = state.pendingApprovals.find((p) => p.id === id);
+          if (item) {
+            set((state) => ({
+              approvedItems: [
+                ...state.approvedItems,
+                {
+                  id: item.id,
+                  type: item.type,
+                  content: item.content,
+                  approvedAt: Date.now(),
+                },
+              ],
+              pendingApprovals: state.pendingApprovals.filter((p) => p.id !== id),
+            }));
+          }
+        },
+
+        rejectItem: (id: string) => {
+          set((state) => ({
+            pendingApprovals: state.pendingApprovals.filter((p) => p.id !== id),
+          }));
+        },
+
+        getCheckpoint: (id: string) => {
+          return get().checkpoints.find((cp) => cp.id === id);
+        },
+
+        getCheckpointsByTag: (tag: string) => {
+          return get().checkpoints.filter((cp) => cp.metadata?.tags?.includes(tag));
+        },
+
+        clearCheckpoints: () => {
+          set({ checkpoints: [] });
+        },
+
+        clearAll: () => {
+          set({
+            checkpoints: [],
+            pendingApprovals: [],
+            approvedItems: [],
+          });
+        },
+      }),
+      {
+        name: `codeflow-session-${projectId}`,
+      }
+    )
+  );
+}
+===== FILE: src/lib/codeflow/versioning.ts =====
+/**
+ * codeflow-versioning wrapper
+ * Version control and history management
+ */
+import type { VersionInfo, DiffResult, VersioningManager, Branch, Commit } from '@/types/codeflow-versioning';
+
+// Re-export types
+export type { VersionInfo, DiffResult, Branch, Commit };
+
+class VersioningManagerImpl implements VersioningManager {
+  private versions: VersionInfo[] = [];
+  private currentVersion: string | null = null;
+  private autoCheckpoint: boolean = false;
+
+  async initialize(): Promise<void> {
+    console.log('[codeflow-versioning] Versioning manager initialized');
+  }
+
+  createVersion(label: string, author?: string): VersionInfo {
+    const version: VersionInfo = {
+      id: `v-${Date.now()}`,
+      label,
+      timestamp: Date.now(),
+      changes: this.versions.length,
+      author,
+    };
+    this.versions.push(version);
+    this.currentVersion = version.id;
+    return version;
+  }
+
+  getVersions(): VersionInfo[] {
+    return [...this.versions];
+  }
+
+  getCurrentVersion(): VersionInfo | undefined {
+    return this.versions.find((v) => v.id === this.currentVersion);
+  }
+
+  checkout(versionId: string): void {
+    if (this.versions.find((v) => v.id === versionId)) {
+      this.currentVersion = versionId;
+      console.log(`[codeflow-versioning] Checked out ${versionId}`);
+    }
+  }
+
+  async diff(v1: string, v2: string): Promise<DiffResult[]> {
+    // Simplified diff - real implementation would use structured diff
+    return [
+      {
+        file: 'src/components/Canvas.tsx',
+        additions: 15,
+        deletions: 3,
+        changes: ['+ Added new animation', '- Removed unused import'],
+      },
+    ];
+  }
+
+  getHistory(days: number = 7): VersionInfo[] {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    return this.versions.filter((v) => v.timestamp >= cutoff);
+  }
+
+  async merge(fromVersion: string, toVersion: string): Promise<VersionInfo> {
+    const newVersion = this.createVersion(
+      `Merge ${fromVersion} → ${toVersion}`,
+      'system'
+    );
+    return newVersion;
+  }
+}
+
+// Singleton
+let versioning: VersioningManager | null = null;
+
+export function getVersioning(): VersioningManager {
+  if (!versioning) {
+    versioning = new VersioningManagerImpl();
+  }
+  return versioning;
+}
+
+// Git-like operations
+export interface GitOperation {
+  branch: (name: string) => Branch;
+  checkoutBranch: (name: string) => void;
+  createCommit: (message: string, files: string[]) => Commit;
+  getBranches: () => Branch[];
+  getCommits: () => Commit[];
+}
+
+export function useGitOperations(): GitOperation {
+  return {
+    branch: (name: string) => ({
+      id: `branch-${Date.now()}`,
+      name,
+      head: '',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }),
+    checkoutBranch: (_name: string) => {},
+    createCommit: (message: string, _files: string[]) => ({
+      id: `commit-${Date.now()}`,
+      versionId: `v-${Date.now()}`,
+      message,
+      timestamp: Date.now(),
+      files: _files,
+    }),
+    getBranches: () => [],
+    getCommits: () => [],
+  };
+}
+===== FILE: src/lib/utils.ts =====
+import { clsx, type ClassValue } from 'clsx';
+
+export function cn(...inputs: ClassValue[]) {
+  return clsx(inputs);
+}
+===== FILE: src/types/codeflow-agent.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-agent
+ * Orchestration layer for subagent-driven development using Claude Code agents
+ */
+
+export interface SubAgent {
+  id: string;
+  name: string;
+  type: AgentType;
+  status: AgentStatus;
+  capabilities: string[];
+  config?: AgentConfig;
+}
+
+export type AgentType = 'coder' | 'reviewer' | 'tester' | 'planner' | 'researcher' | 'debugger';
+export type AgentStatusValue = 'idle' | 'initializing' | 'running' | 'completed' | 'error' | 'terminated';
+
+export interface AgentTask {
+  id: string;
+  type: 'code' | 'review' | 'test' | 'research' | 'planning';
+  description: string;
+  input: any;
+  output?: any;
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  assignedAgent?: string;
+  createdAt: number;
+  completedAt?: number;
+  error?: string;
+}
+
+export interface AgentConfig {
+  maxConcurrent?: number;
+  timeout?: number;
+  retryAttempts?: number;
+  model?: string;
+  temperature?: number;
+  systemPrompt?: string;
+}
+
+export interface AgentStatus {
+  id: string;
+  name: string;
+  status: AgentStatusValue;
+  progress: number;
+  currentTask?: string;
+  lastMessage?: string;
+}
+
+export interface AgentEvent {
+  type: 'status_change' | 'task_start' | 'task_complete' | 'error' | 'message';
+  agentId: string;
+  data?: any;
+  timestamp?: number;
+}
+
+export interface AgentOrchestrator {
+  initialize(config?: Partial<AgentConfig>): Promise<void>;
+  registerAgent(id: string, name: string): void;
+  spawnAgent(id: string, name: string, task: Partial<AgentTask>): Promise<void>;
+  executeTask(agentId: string, task: AgentTask): Promise<any>;
+  getAgentStatus(agentId: string): AgentStatus | undefined;
+  listAgents(): AgentStatus[];
+  onEvent(callback: (event: AgentEvent) => void): () => void;
+  terminateAgent(agentId: string): Promise<void>;
+  terminateAll(): Promise<void>;
+}
+
+export interface TaskResult {
+  taskId: string;
+  success: boolean;
+  output?: any;
+  error?: string;
+  duration: number;
+}
+
+export interface TaskQueue {
+  enqueue(task: AgentTask, priority?: number): void;
+  dequeue(): AgentTask | undefined;
+  peek(): AgentTask | undefined;
+  size(): number;
+  clear(): void;
+}
+===== FILE: src/types/codeflow-analysis.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-analysis
+ * Analysis engine for codebase metrics and insights
+ */
+
+export interface AnalysisReport {
+  file: string;
+  metrics: {
+    lines: number;
+    complexity: number;
+    maintainability: number;
+  };
+  issues: AnalysisIssue[];
+  suggestions?: Suggestion[];
+}
+
+export interface AnalysisIssue {
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  line?: number;
+  column?: number;
+  rule?: string;
+  fix?: string;
+}
+
+export interface Suggestion {
+  type: 'optimization' | 'refactor' | 'best-practice';
+  message: string;
+  line?: number;
+  effort?: 'low' | 'medium' | 'high';
+}
+
+export interface CodeMetrics {
+  totalLines: number;
+  codeLines: number;
+  commentLines: number;
+  blankLines: number;
+  files: number;
+  averageFileLength: number;
+  largestFile?: {
+    path: string;
+    lines: number;
+  };
+}
+
+export interface AnalysisEngine {
+  initialize(): Promise<void>;
+  analyzeFile(filePath: string, content: string): Promise<AnalysisReport>;
+  analyzeProject(projectPath: string): Promise<CodeMetrics>;
+  getResults(): AnalysisReport[];
+  clearCache(): void;
+  getSummary(): {
+    totalFiles: number;
+    totalIssues: number;
+    averageComplexity: number;
+  };
+}
+
+export interface AnalysisConfig {
+  maxFileSize?: number;
+  excludePatterns?: string[];
+  includePatterns?: string[];
+  rules?: {
+    maxComplexity?: number;
+    maxLineLength?: number;
+    requireDocumentation?: boolean;
+  };
+}
+
+export interface ComplexityBreakdown {
+  file: string;
+  functionComplexity: {
+    name: string;
+    line: number;
+    complexity: number;
+  }[];
+  cyclomaticComplexity: number;
+  cognitiveComplexity: number;
+}
+===== FILE: src/types/codeflow-canvas.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-canvas
+ * React Flow graph canvas with Monaco code editors and IDE layout components
+ */
+
+import type { Node, Edge, NodeTypes, EdgeTypes } from '@xyflow/react';
+
+export interface CanvasConfig {
+  nodes?: Node[];
+  edges?: Edge[];
+  nodeTypes?: NodeTypes;
+  edgeTypes?: EdgeTypes;
+  defaultNodeType?: string;
+  defaultEdgeType?: string;
+  fitView?: boolean;
+  fitViewOptions?: {
+    padding?: number;
+    includeHiddenNodes?: boolean;
+  };
+  minZoom?: number;
+  maxZoom?: number;
+  defaultEdgeOptions?: Partial<Edge>;
+}
+
+export interface NodeData {
+  label: string;
+  description?: string;
+  selected?: boolean;
+  status?: 'idle' | 'running' | 'completed' | 'error';
+  [key: string]: any;
+}
+
+export interface EdgeData {
+  animated?: boolean;
+  label?: string;
+  style?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface CanvasState {
+  nodes: Node[];
+  edges: Edge[];
+  selectedNode: string | null;
+  zoom: number;
+  setNodes: (nodes: Node[]) => void;
+  setEdges: (edges: Edge[]) => void;
+  selectNode: (id: string | null) => void;
+  setZoom: (zoom: number) => void;
+}
+
+export interface CanvasBlueprintNode extends Node {
+  type: 'blueprint';
+  data: NodeData & {
+    label: string;
+    description?: string;
+  };
+}
+
+export interface CanvasAgentNode extends Node {
+  type: 'agent';
+  data: NodeData & {
+    label: string;
+    description?: string;
+    status?: 'idle' | 'running' | 'completed' | 'error';
+  };
+}
+
+export interface CanvasGhostNode extends Node {
+  type: 'ghost';
+  data: NodeData & {
+    label: string;
+    description?: string;
+    fitness?: number;
+  };
+}
+
+export interface CanvasTwinNode extends Node {
+  type: 'twin';
+  data: NodeData & {
+    label: string;
+    description?: string;
+    syncStatus?: 'synced' | 'syncing' | 'error';
+  };
+}
+
+export interface CanvasExecutionNode extends Node {
+  type: 'execution';
+  data: NodeData & {
+    label: string;
+    description?: string;
+    output?: string;
+    status?: 'idle' | 'running' | 'completed' | 'error';
+  };
+}
+
+export type CodeflowCanvasNode = CanvasBlueprintNode | CanvasAgentNode | CanvasGhostNode | CanvasTwinNode | CanvasExecutionNode;
+
+export interface CanvasEventHandlers {
+  onNodeClick?: (event: React.MouseEvent, node: Node) => void;
+  onEdgeClick?: (event: React.MouseEvent, edge: Edge) => void;
+  onPaneClick?: (event: React.MouseEvent) => void;
+  onNodeDragStart?: (event: React.MouseEvent, node: Node) => void;
+  onNodeDrag?: (event: React.MouseEvent, node: Node) => void;
+  onNodeDragStop?: (event: React.MouseEvent, node: Node) => void;
+  onNodesChange?: (changes: any[]) => void;
+  onEdgesChange?: (changes: any[]) => void;
+  onConnect?: (connection: any) => void;
+}
+
+export interface MiniMapConfig {
+  nodeColor?: (node: Node) => string;
+  nodeStrokeColor?: (node: Node) => string;
+  nodeIconColor?: (node: Node) => string;
+  maskColor?: string;
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+}
+
+export interface ControlsConfig {
+  showZoom?: boolean;
+  showFitView?: boolean;
+  showMiniMap?: boolean;
+  position?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+}
+===== FILE: src/types/codeflow-core.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-core
+ * Analysis core for blueprint generation, repository analysis, exports, and conflict detection
+ */
+
+export interface BlueprintNode {
+  id: string;
+  type: string;
+  label: string;
+  description?: string;
+  position?: { x: number; y: number };
+  data?: Record<string, any>;
+}
+
+export interface AnalysisResult {
+  file: string;
+  metrics: {
+    lines: number;
+    complexity: number;
+    maintainability: number;
+  };
+  issues: Issue[];
+}
+
+export interface Issue {
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  line?: number;
+  rule?: string;
+}
+
+export interface RepositoryAnalysis {
+  path: string;
+  files: number;
+  totalLines: number;
+  languageBreakdown: Record<string, number>;
+  issues: Issue[];
+  timestamp: number;
+}
+
+export interface CodeflowCore {
+  analyze(path: string): Promise<RepositoryAnalysis>;
+  generateBlueprint(spec: BlueprintSpec): Promise<BlueprintNode[]>;
+  detectConflicts(projectPath: string): Promise<Conflict[]>;
+  exportBlueprint(nodes: BlueprintNode[], format: 'json' | 'yaml' | 'markdown'): string;
+}
+
+export interface BlueprintSpec {
+  name: string;
+  description?: string;
+  nodes?: BlueprintNode[];
+  options?: {
+    includeTests?: boolean;
+    includeDocumentation?: boolean;
+    targetLanguage?: string;
+  };
+}
+
+export interface Conflict {
+  type: 'naming' | 'import' | 'dependency';
+  files: string[];
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export function createCodeflowCore(): CodeflowCore {
+  return {
+    async analyze(path) {
+      return {
+        path,
+        files: 0,
+        totalLines: 0,
+        languageBreakdown: {},
+        issues: [],
+        timestamp: Date.now(),
+      };
+    },
+    async generateBlueprint(spec) {
+      return spec.nodes || [];
+    },
+    async detectConflicts(projectPath) {
+      return [];
+    },
+    exportBlueprint(nodes, format) {
+      if (format === 'json') return JSON.stringify(nodes, null, 2);
+      return JSON.stringify(nodes);
+    },
+  };
+}
+===== FILE: src/types/codeflow-dtwin.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-dtwin
+ * Digital twin simulation engine with active nodes and snapshot tooling
+ */
+
+export interface TwinSnapshot {
+  id: string;
+  timestamp: number;
+  state: TwinState;
+  label?: string;
+  metadata?: {
+    author?: string;
+    tags?: string[];
+    duration?: number;
+  };
+}
+
+export interface TwinState {
+  nodes: TwinNode[];
+  connections: TwinConnection[];
+  variables: Record<string, any>;
+  timestamp: number;
+}
+
+export interface TwinNode {
+  id: string;
+  type: string;
+  label?: string;
+  state: Record<string, any>;
+  position?: { x: number; y: number };
+  connections: string[];
+  metadata?: Record<string, any>;
+}
+
+export interface TwinConnection {
+  id: string;
+  sourceId: string;
+  targetId: string;
+  type?: 'data' | 'control' | 'bidirectional';
+  weight?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface DigitalTwinEngine {
+  initialize(): Promise<void>;
+  addNode(node: Omit<TwinNode, 'id'>): TwinNode;
+  removeNode(id: string): void;
+  updateNodeState(id: string, state: Record<string, any>): void;
+  getNode(id: string): TwinNode | undefined;
+  getAllNodes(): TwinNode[];
+  createSnapshot(label?: string): TwinSnapshot;
+  restoreSnapshot(snapshotId: string): void;
+  getSnapshots(): TwinSnapshot[];
+  deleteSnapshot(snapshotId: string): void;
+  sync(): Promise<void>;
+  isSyncing(): boolean;
+  connect(sourceId: string, targetId: string, type?: 'data' | 'control'): TwinConnection;
+  disconnect(connectionId: string): void;
+  getConnections(): TwinConnection[];
+}
+
+export interface SimulationConfig {
+  timestep?: number;
+  maxIterations?: number;
+  convergenceThreshold?: number;
+  enableVisualization?: boolean;
+}
+
+export interface SimulationResult {
+  success: boolean;
+  iterations: number;
+  finalState: TwinState;
+  convergenceHistory?: number[];
+  duration: number;
+}
+
+export interface TwinEvent {
+  type: 'node_added' | 'node_removed' | 'state_updated' | 'snapshot_created' | 'sync_started' | 'sync_completed';
+  nodeId?: string;
+  snapshotId?: string;
+  timestamp: number;
+}
+
+export interface TwinMetrics {
+  totalNodes: number;
+  totalConnections: number;
+  totalSnapshots: number;
+  lastSyncTime?: number;
+  simulationIterations?: number;
+}
+===== FILE: src/types/codeflow-evolution.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-evolution
+ * Genetic algorithm for architecture evolution with AI-powered ghost nodes
+ */
+
+export interface GhostNode {
+  id: string;
+  genotype: Genotype;
+  phenotype?: any;
+  fitness: number;
+  generation: number;
+  parentIds: string[];
+  createdAt: number;
+  metadata?: Record<string, any>;
+}
+
+export interface Genotype {
+  structure: {
+    nodes: number;
+    layers: number;
+    connections: number;
+    [key: string]: any;
+  };
+  parameters: {
+    learningRate: number;
+    threshold: number;
+    mutationStrength?: number;
+    [key: string]: any;
+  };
+  encoding: string;
+}
+
+export interface EvolutionConfig {
+  populationSize: number;
+  mutationRate: number;
+  crossoverRate: number;
+  generations: number;
+  selectionPressure?: number;
+  elitism?: number;
+  fitnessFunction?: (node: GhostNode) => number;
+}
+
+export interface EvolutionResult {
+  bestNode: GhostNode;
+  finalPopulation: GhostNode[];
+  history: EvolutionHistoryEntry[];
+  duration: number;
+  success: boolean;
+}
+
+export interface EvolutionHistoryEntry {
+  generation: number;
+  bestFitness: number;
+  averageFitness: number;
+  worstFitness: number;
+  bestNodeId: string;
+  diversity: number;
+}
+
+export interface EvolutionEngine {
+  initialize(config?: Partial<EvolutionConfig>): Promise<void>;
+  evolve(): Promise<EvolutionResult>;
+  stop(): void;
+  getPopulation(): GhostNode[];
+  getGeneration(): number;
+  getBestNode(): GhostNode | undefined;
+  getHistory(): EvolutionHistoryEntry[];
+  getConfig(): EvolutionConfig;
+  addToPopulation(node: GhostNode): void;
+  removeFromPopulation(nodeId: string): void;
+  isRunning(): boolean;
+}
+
+export interface SelectionMethod {
+  type: 'tournament' | 'roulette' | 'rank' | 'truncation';
+  tournamentSize?: number;
+  tournamentProbability?: number;
+}
+
+export interface CrossoverMethod {
+  type: 'single-point' | 'two-point' | 'uniform' | 'arithmetic';
+  probability: number;
+}
+
+export interface MutationMethod {
+  type: 'gaussian' | 'random' | 'creep' | 'step';
+  rate: number;
+  strength?: number;
+}
+
+export interface EvolutionEvent {
+  type: 'generation_complete' | 'evolution_complete' | 'population_updated' | 'best_node_improved';
+  generation?: number;
+  bestFitness?: number;
+  nodeId?: string;
+  timestamp: number;
+}
+
+export interface DiversityMetrics {
+  geneticDiversity: number;
+  fitnessDiversity: number;
+  structuralDiversity: number;
+}
+
+export interface BreedingResult {
+  offspring: GhostNode[];
+  parents: GhostNode[];
+  method: 'crossover' | 'mutation' | 'cloning';
+}
+===== FILE: src/types/codeflow-execution.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-execution
+ * Runtime execution engine for CodeFlow blueprint graphs
+ */
+
+export interface ExecutionResult {
+  success: boolean;
+  output?: string;
+  error?: string;
+  duration?: number;
+  logs?: LogEntry[];
+  artifacts?: Artifact[];
+}
+
+export interface LogEntry {
+  level: 'debug' | 'info' | 'warn' | 'error';
+  message: string;
+  timestamp: number;
+  source?: string;
+}
+
+export interface Artifact {
+  type: 'file' | 'directory' | 'test-result';
+  path: string;
+  content?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface WorkspaceConfig {
+  timeout: number;
+  isolated: boolean;
+  workingDirectory?: string;
+  environment?: Record<string, string>;
+  dependencies?: string[];
+}
+
+export interface ExecutionEngine {
+  initialize(config?: Partial<WorkspaceConfig>): Promise<void>;
+  execute(code: string, context?: any): Promise<ExecutionResult>;
+  validate(code: string): Promise<{ valid: boolean; errors: string[] }>;
+  test(code: string, testCases: TestCase[]): Promise<TestResult[]>;
+  getConfig(): WorkspaceConfig;
+}
+
+export interface TestCase {
+  input: any;
+  expected: any;
+  description?: string;
+}
+
+export interface TestResult {
+  input: any;
+  expected: any;
+  actual: any;
+  passed: boolean;
+  duration?: number;
+  error?: string;
+}
+
+export interface ExecutionContext {
+  workspaceId: string;
+  blueprintId?: string;
+  userId?: string;
+  variables: Record<string, any>;
+  startTime: number;
+}
+
+export interface RuntimeMetrics {
+  totalExecutions: number;
+  successfulExecutions: number;
+  failedExecutions: number;
+  averageDuration: number;
+  peakMemoryUsage?: number;
+}
+===== FILE: src/types/codeflow-mcp.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-mcp
+ * MCP server configuration and tool registry for CodeFlow blueprint operations
+ */
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, any>;
+  outputSchema?: Record<string, any>;
+  handler: (...args: any[]) => Promise<any>;
+  permissions?: string[];
+}
+
+export interface ToolExecution {
+  toolName: string;
+  arguments: any[];
+  result?: any;
+  error?: string;
+  duration?: number;
+  timestamp: number;
+}
+
+export interface MCPServerConfig {
+  tools: Map<string, ToolDefinition>;
+  registeredAgents: string[];
+  permissions?: {
+    allowList?: string[];
+    denyList?: string[];
+  };
+}
+
+export interface MCPServer {
+  registerTool(tool: ToolDefinition): void;
+  unregisterTool(name: string): void;
+  getTool(name: string): ToolDefinition | undefined;
+  listTools(): ToolDefinition[];
+  executeTool(name: string, args: any[]): Promise<any>;
+  registerAgent(agentId: string): void;
+  unregisterAgent(agentId: string): void;
+  getConfig(): MCPServerConfig;
+}
+
+export interface MCPClientConfig {
+  serverUrl: string;
+  apiKey?: string;
+  timeout?: number;
+  retries?: number;
+}
+
+export interface MCPMessage {
+  type: 'request' | 'response' | 'notification';
+  id: string;
+  method?: string;
+  params?: any;
+  result?: any;
+  error?: any;
+}
+===== FILE: src/types/codeflow-prd.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-prd
+ * PRD processing and requirements management
+ */
+
+export interface PRDDocument {
+  id: string;
+  title: string;
+  content: string;
+  status: 'draft' | 'processing' | 'complete' | 'archived';
+  sections: PRDSection[];
+  createdAt: number;
+  updatedAt: number;
+  metadata?: {
+    author?: string;
+    version?: string;
+    tags?: string[];
+  };
+}
+
+export interface PRDSection {
+  id: string;
+  type: 'goal' | 'requirement' | 'constraint' | 'stakeholder' | 'background' | 'success-metric';
+  content: string;
+  priority?: 'high' | 'medium' | 'low';
+  metadata?: Record<string, any>;
+}
+
+export interface Requirement {
+  id: string;
+  description: string;
+  status: 'open' | 'in_progress' | 'fulfilled' | 'deferred' | 'blocked';
+  relatedSections: string[];
+  acceptanceCriteria?: string[];
+  priority?: 'high' | 'medium' | 'low';
+  effort?: 'small' | 'medium' | 'large';
+}
+
+export interface PRDProcessor {
+  initialize(): Promise<void>;
+  createDocument(title: string, content: string): PRDDocument;
+  processDocument(docId: string): Promise<PRDDocument>;
+  getDocument(docId: string): PRDDocument | undefined;
+  getCurrentDocument(): PRDDocument | undefined;
+  listDocuments(): PRDDocument[];
+  extractRequirements(docId: string): Requirement[];
+  updateRequirement(reqId: string, updates: Partial<Requirement>): void;
+  archiveDocument(docId: string): void;
+}
+
+export interface PRDParseOptions {
+  includeExamples?: boolean;
+  extractMetadata?: boolean;
+  normalizeLineEndings?: boolean;
+}
+
+export interface RequirementLink {
+  requirementId: string;
+  sectionId: string;
+  type: 'satisfies' | 'conflicts' | 'relates-to';
+}
+===== FILE: src/types/codeflow-store.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-store
+ * Local session storage, project-scoped state, checkpointing, approvals
+ */
+
+export interface Checkpoint {
+  id: string;
+  timestamp: number;
+  data: any;
+  label?: string;
+  metadata?: {
+    userId?: string;
+    projectId?: string;
+    tags?: string[];
+  };
+}
+
+export interface SessionStore {
+  checkpoints: Checkpoint[];
+  pendingApprovals: PendingApproval[];
+  approvedItems: ApprovedItem[];
+  addCheckpoint(data: any, label?: string): void;
+  approveItem(id: string): void;
+  getCheckpoint(id: string): Checkpoint | undefined;
+  clearCheckpoints(): void;
+  getCheckpointsByTag(tag: string): Checkpoint[];
+}
+
+export interface PendingApproval {
+  id: string;
+  type: 'code' | 'comment' | 'file';
+  content: any;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: number;
+  createdBy?: string;
+}
+
+export interface ApprovedItem {
+  id: string;
+  type: 'code' | 'comment' | 'file';
+  content: any;
+  approvedAt: number;
+  approvedBy?: string;
+}
+
+export interface ProjectState {
+  projectId: string;
+  name: string;
+  checkpoints: Checkpoint[];
+  currentCheckpoint: string | null;
+  metadata: {
+    createdAt: number;
+    updatedAt: number;
+    version: string;
+  };
+}
+
+export interface StorageAdapter {
+  save(key: string, value: any): Promise<void>;
+  load(key: string): Promise<any | null>;
+  remove(key: string): Promise<void>;
+  list(): Promise<string[]>;
+}
+===== FILE: src/types/codeflow-versioning.ts =====
+/**
+ * Type definitions for @abhinav2203/codeflow-versioning
+ * Version control and history management
+ */
+
+export interface VersionInfo {
+  id: string;
+  label: string;
+  timestamp: number;
+  changes: number;
+  author?: string;
+  message?: string;
+  files?: string[];
+}
+
+export interface DiffResult {
+  file: string;
+  additions: number;
+  deletions: number;
+  changes: string[];
+  hunks?: DiffHunk[];
+}
+
+export interface DiffHunk {
+  lines: string[];
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+}
+
+export interface VersioningManager {
+  initialize(): Promise<void>;
+  createVersion(label: string, author?: string): VersionInfo;
+  getVersions(): VersionInfo[];
+  getCurrentVersion(): VersionInfo | undefined;
+  checkout(versionId: string): void;
+  diff(v1: string, v2: string): Promise<DiffResult[]>;
+  getHistory(days?: number): VersionInfo[];
+  merge(fromVersion: string, toVersion: string): Promise<VersionInfo>;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  head: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Commit {
+  id: string;
+  versionId: string;
+  message: string;
+  author?: string;
+  timestamp: number;
+  files: string[];
+  parentIds?: string[];
+}
+
+export interface VersioningOptions {
+  autoCheckpoint?: boolean;
+  maxVersions?: number;
+  includeMetadata?: boolean;
+}
+===== FILE: src/types/coderag.ts =====
+/**
+ * Type definitions for @abhinav2203/coderag
+ * Standalone code retrieval and MCP server for multi-language repositories
+ */
+
+export interface CodeQuery {
+  query: string;
+  language?: string;
+  maxResults?: number;
+  filters?: {
+    fileExtension?: string;
+    minSimilarity?: number;
+    maxSimilarity?: number;
+  };
+}
+
+export interface CodeResult {
+  file: string;
+  content: string;
+  score: number;
+  lineStart: number;
+  lineEnd: number;
+  language?: string;
+  matchedTokens?: string[];
+}
+
+export interface CodeIndex {
+  repository: string;
+  files: number;
+  lastUpdated: number;
+  indexSize?: number;
+}
+
+export interface CodeRAGConfig {
+  repository: string;
+  chunkSize?: number;
+  overlap?: number;
+  embeddings?: {
+    provider: 'openai' | 'local' | 'custom';
+    model?: string;
+  };
+}
+
+export interface CodeRAG {
+  initialize(repoPath?: string): Promise<void>;
+  indexRepository(repoPath: string): Promise<CodeIndex>;
+  query(request: CodeQuery): Promise<CodeResult[]>;
+  searchByFilename(filename: string): Promise<CodeResult[]>;
+  getIndexes(): CodeIndex[];
+  clearCache(): void;
+}
+
+export interface SearchOptions {
+  limit?: number;
+  offset?: number;
+  includeContext?: boolean;
+  contextLines?: number;
+}
+
+export interface SearchResult {
+  file: string;
+  matches: {
+    line: number;
+    content: string;
+    score: number;
+  }[];
+  totalMatches: number;
+}
+===== FILE: src/types/index.ts =====
+/**
+ * Unified type exports for all @abhinav2203/codeflow-* packages
+ */
+
+export * from './codeflow-core';
+export * from './coderag';
+export * from './codeflow-mcp';
+export * from './codeflow-store';
+export * from './codeflow-versioning';
+export * from './codeflow-prd';
+export * from './codeflow-analysis';
+export * from './codeflow-agent';
+export * from './codeflow-execution';
+export * from './codeflow-canvas';
+export * from './codeflow-dtwin';
+export * from './codeflow-evolution';
+===== FILE: tailwind.config.ts =====
+import type { Config } from 'tailwindcss';
+
+const config: Config = {
+  content: [
+    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      colors: {
+        'cf-bg': '#0a0a0f',
+        'cf-surface': '#13131a',
+        'cf-surface-elevated': '#1a1a24',
+        'cf-border': '#2a2a3a',
+        'cf-primary': '#6366f1',
+        'cf-primary-glow': '#818cf8',
+        'cf-accent': '#22d3ee',
+        'cf-success': '#10b981',
+        'cf-warning': '#f59e0b',
+        'cf-error': '#ef4444',
+      },
+      animation: {
+        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+        'ghost-pulse': 'ghost-pulse 3s ease-in-out infinite',
+        'flow-gradient': 'flow-gradient 2s linear infinite',
+        'node-select': 'node-select 0.3s ease-out',
+      },
+      keyframes: {
+        'pulse-glow': {
+          '0%, 100%': {
+            boxShadow: '0 0 5px rgba(99, 102, 241, 0.5), 0 0 10px rgba(99, 102, 241, 0.3)',
+          },
+          '50%': {
+            boxShadow: '0 0 15px rgba(99, 102, 241, 0.8), 0 0 25px rgba(99, 102, 241, 0.5)',
+          },
+        },
+        'ghost-pulse': {
+          '0%, 100%': { opacity: '0.4' },
+          '50%': { opacity: '0.8' },
+        },
+        'flow-gradient': {
+          '0%': { backgroundPosition: '0% 50%' },
+          '100%': { backgroundPosition: '200% 50%' },
+        },
+        'node-select': {
+          '0%': { transform: 'scale(0.95)' },
+          '100%': { transform: 'scale(1)' },
+        },
+      },
+    },
+  },
+  plugins: [],
+};
+
+export default config;
